@@ -1,12 +1,32 @@
 // User Ranking Page (Admin)
 
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 
 const UserRanking = () => {
   const { getLeaderboard } = useAuth();
+  
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const leaderboard = getLeaderboard();
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        setLoading(true);
+        const data = await getLeaderboard();
+        setLeaderboard(data);
+      } catch (err) {
+        console.error('Error fetching leaderboard:', err);
+        setError('Gagal memuat data ranking');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+  }, [getLeaderboard]);
 
   const getRankStyle = (rank) => {
     switch (rank) {
@@ -35,7 +55,39 @@ const UserRanking = () => {
   };
 
   // Calculate max XP for progress bar
-  const maxXP = leaderboard.length > 0 ? leaderboard[0].xp : 1;
+  const maxXP = leaderboard.length > 0 ? (leaderboard[0].xp || 1) : 1;
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mt-2 animate-pulse"></div>
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <Card className="p-8 text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Coba Lagi
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -51,124 +103,64 @@ const UserRanking = () => {
           <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm text-blue-700">
-            User mendapatkan <strong>+10 XP</strong> setiap kali mengembalikan buku yang dipinjam.
-          </p>
+          <div className="text-sm text-blue-700">
+            <p className="font-medium mb-1">Cara Mendapatkan XP:</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Meminjam buku: <strong>+5 XP</strong></li>
+              <li>Mengembalikan tepat waktu: <strong>+10 XP</strong></li>
+              <li>Bonus streak peminjaman: <strong>+5 XP</strong></li>
+            </ul>
+          </div>
         </div>
       </Card>
 
-      {/* Top 3 Podium */}
-      {leaderboard.length >= 3 && (
-        <div className="flex items-end justify-center gap-4 mb-8">
-          {/* 2nd Place */}
-          <div className="text-center">
-            <img 
-              src={leaderboard[1].avatar} 
-              alt={leaderboard[1].name}
-              className="w-20 h-20 rounded-full mx-auto border-4 border-gray-400 shadow-lg"
-            />
-            <div className="bg-gray-400 text-white rounded-t-lg mt-2 px-6 py-6">
-              <p className="font-bold text-xl">2</p>
-            </div>
-            <p className="text-sm font-medium text-gray-900 mt-2 truncate max-w-24">{leaderboard[1].name.split(' ')[0]}</p>
-            <p className="text-xs text-gray-500">{leaderboard[1].xp} XP</p>
-          </div>
-
-          {/* 1st Place */}
-          <div className="text-center">
-            <div className="relative">
-              <img 
-                src={leaderboard[0].avatar} 
-                alt={leaderboard[0].name}
-                className="w-24 h-24 rounded-full mx-auto border-4 border-yellow-400 shadow-xl"
-              />
-              <div className="absolute -top-3 -right-3 w-10 h-10 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg">
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z" />
-                </svg>
-              </div>
-            </div>
-            <div className="bg-yellow-400 text-white rounded-t-lg mt-2 px-8 py-8">
-              <p className="font-bold text-2xl">1</p>
-            </div>
-            <p className="text-sm font-medium text-gray-900 mt-2 truncate max-w-28">{leaderboard[0].name.split(' ')[0]}</p>
-            <p className="text-xs text-gray-500">{leaderboard[0].xp} XP</p>
-          </div>
-
-          {/* 3rd Place */}
-          <div className="text-center">
-            <img 
-              src={leaderboard[2].avatar} 
-              alt={leaderboard[2].name}
-              className="w-20 h-20 rounded-full mx-auto border-4 border-amber-600 shadow-lg"
-            />
-            <div className="bg-amber-600 text-white rounded-t-lg mt-2 px-6 py-4">
-              <p className="font-bold text-xl">3</p>
-            </div>
-            <p className="text-sm font-medium text-gray-900 mt-2 truncate max-w-24">{leaderboard[2].name.split(' ')[0]}</p>
-            <p className="text-xs text-gray-500">{leaderboard[2].xp} XP</p>
-          </div>
-        </div>
-      )}
-
-      {/* Full Ranking List */}
+      {/* Ranking List */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Semua Ranking</h2>
-        {leaderboard.map((user, index) => {
-          const rank = index + 1;
-          const percentage = maxXP > 0 ? (user.xp / maxXP) * 100 : 0;
-
+        {leaderboard.length > 0 ? leaderboard.map((user, index) => {
+          const rank = user.rank || index + 1;
+          const progress = maxXP > 0 ? ((user.xp || 0) / maxXP) * 100 : 0;
+          
           return (
-            <Card 
-              key={user.id} 
-              className={`${getRankBg(rank)}`}
-              padding="sm"
-            >
+            <Card key={user.email || index} className={`${getRankBg(rank)} hover:shadow-md transition-shadow`}>
               <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${getRankStyle(rank)}`}>
+                {/* Rank Badge */}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold shrink-0 ${getRankStyle(rank)}`}>
                   {rank}
                 </div>
-                <img 
-                  src={user.avatar} 
-                  alt={user.name}
-                  className="w-12 h-12 rounded-full"
-                />
+
+                {/* Avatar */}
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center text-white font-bold shrink-0">
+                  {user.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+
+                {/* User Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{user.name}</p>
-                      <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                  <p className="font-medium text-gray-900 truncate">{user.name}</p>
+                  <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                  <div className="mt-2 hidden sm:block">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
                     </div>
-                    <span className="font-bold text-emerald-600 ml-4 shrink-0">
-                      {user.xp} XP
-                    </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full transition-all duration-500 ${
-                        rank === 1 ? 'bg-yellow-400' :
-                        rank === 2 ? 'bg-gray-400' :
-                        rank === 3 ? 'bg-amber-600' :
-                        'bg-emerald-500'
-                      }`}
-                      style={{ width: `${percentage}%` }}
-                    ></div>
-                  </div>
+                </div>
+
+                {/* XP */}
+                <div className="text-right shrink-0">
+                  <p className="text-2xl font-bold text-emerald-600">{user.xp || 0}</p>
+                  <p className="text-xs text-gray-500">XP</p>
                 </div>
               </div>
             </Card>
           );
-        })}
+        }) : (
+          <Card className="p-8 text-center text-gray-500">
+            Tidak ada data ranking
+          </Card>
+        )}
       </div>
-
-      {leaderboard.length === 0 && (
-        <div className="text-center py-12">
-          <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-          <p className="text-gray-500">Belum ada data user</p>
-        </div>
-      )}
     </div>
   );
 };

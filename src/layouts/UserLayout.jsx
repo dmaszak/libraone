@@ -20,7 +20,7 @@ const UserLayout = () => {
   const isDashboard = location.pathname === '/dashboard';
 
   if (isDashboard) {
-    // Dashboard with navbar overlay on top of background (no hamburger)
+    // Dashboard with light glassmorphism navbar
     return (
       <div className="min-h-screen">
         <div className="fixed top-0 left-0 right-0 z-50">

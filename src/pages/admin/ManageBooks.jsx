@@ -1,6 +1,6 @@
 // Manage Books Page (Admin)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -10,7 +10,11 @@ import SearchBar from '../../components/common/SearchBar';
 import { CATEGORIES } from '../../utils/constants';
 
 const ManageBooks = () => {
-  const { books, addBook, updateBook, deleteBook } = useAuth();
+  const { getBooks, addBook, updateBook, deleteBook } = useAuth();
+  
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
@@ -18,10 +22,13 @@ const ManageBooks = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editingBook, setEditingBook] = useState(null);
   const [bookToDelete, setBookToDelete] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [coverFile, setCoverFile] = useState(null);
+  const [coverPreview, setCoverPreview] = useState('');
 
   const initialFormData = {
+    idBuku: '',
     title: '',
     author: '',
     publisher: '',
@@ -29,10 +36,38 @@ const ManageBooks = () => {
     category: 'Pendidikan',
     cover: '',
     synopsis: '',
-    stock: 1
+    pages: 0
   };
 
   const [formData, setFormData] = useState(initialFormData);
+
+  // Fetch books
+  useEffect(() => {
+    const fetchBooks = async () => {
+      try {
+        setLoading(true);
+        const data = await getBooks();
+        setBooks(data);
+      } catch (err) {
+        console.error('Error fetching books:', err);
+        setError('Gagal memuat data buku');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBooks();
+  }, [getBooks]);
+
+  // Refresh books
+  const refreshBooks = async () => {
+    try {
+      const data = await getBooks();
+      setBooks(data);
+    } catch (err) {
+      console.error('Error refreshing books:', err);
+    }
+  };
 
   // Filter books
   const filteredBooks = books.filter(book => {
@@ -46,28 +81,62 @@ const ManageBooks = () => {
     const { name, value } = e.target;
     setFormData({
       ...formData,
-      [name]: name === 'year' || name === 'stock' ? parseInt(value) || 0 : value
+      [name]: name === 'year' || name === 'pages' ? parseInt(value) || 0 : value
     });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setMessage({ type: 'error', text: 'File harus berupa gambar (JPG, PNG, dll)' });
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setMessage({ type: 'error', text: 'Ukuran file maksimal 5MB' });
+        return;
+      }
+      setCoverFile(file);
+      // Create preview URL
+      setCoverPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const clearCoverFile = () => {
+    setCoverFile(null);
+    setCoverPreview('');
   };
 
   const openAddModal = () => {
     setEditingBook(null);
     setFormData(initialFormData);
+    setCoverFile(null);
+    setCoverPreview('');
     setMessage({ type: '', text: '' });
     setShowModal(true);
   };
 
   const openEditModal = (book) => {
     setEditingBook(book);
+    setCoverFile(null);
+    // Show existing cover as preview
+    if (book.cover && book.cover !== 'default.jpg') {
+      setCoverPreview(`https://backend-libraone.vercel.app/uploads/${book.cover}`);
+    } else {
+      setCoverPreview('');
+    }
     setFormData({
+      idBuku: book.idBuku || '',
       title: book.title,
       author: book.author,
-      publisher: book.publisher,
-      year: book.year,
+      publisher: book.publisher || '',
+      year: book.year || new Date().getFullYear(),
       category: book.category,
-      cover: book.cover,
-      synopsis: book.synopsis,
-      stock: book.stock
+      cover: book.cover || '',
+      synopsis: book.synopsis || '',
+      pages: book.pages || 0
     });
     setMessage({ type: '', text: '' });
     setShowModal(true);
@@ -80,55 +149,116 @@ const ManageBooks = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setActionLoading(true);
     setMessage({ type: '', text: '' });
 
     // Validation
-    if (!formData.title || !formData.author || !formData.publisher) {
-      setMessage({ type: 'error', text: 'Mohon lengkapi semua field yang wajib diisi' });
-      setLoading(false);
+    if (!formData.title || !formData.author) {
+      setMessage({ type: 'error', text: 'Mohon lengkapi judul dan penulis' });
+      setActionLoading(false);
       return;
     }
 
-    // Set default cover if empty
+    // Generate id_buku if not provided (for new books)
+    const generatedIdBuku = formData.idBuku || `buku${Date.now()}`;
+
+    // Format tahun_terbit as date string (YYYY-01-01)
+    const tahunTerbit = `${formData.year}-01-01`;
+
+    // Map form data to API format
     const bookData = {
-      ...formData,
-      cover: formData.cover || `https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=300&h=400&fit=crop`
+      id_buku: generatedIdBuku,
+      judul: formData.title,
+      pengarang: formData.author,
+      penerbit: formData.publisher || '-',
+      tahun_terbit: tahunTerbit,
+      kategori: formData.category.toLowerCase(),
+      cover: formData.cover || 'default.jpg',
+      buku_deskripsi: formData.synopsis || '-',
+      jumlah_halaman: parseInt(formData.pages) || 100
     };
 
-    if (editingBook) {
-      // Update book
-      const result = updateBook(editingBook.id, bookData);
-      if (result.success) {
-        setMessage({ type: 'success', text: 'Buku berhasil diperbarui!' });
-        setTimeout(() => {
-          setShowModal(false);
-          setMessage({ type: '', text: '' });
-        }, 1500);
+    try {
+      if (editingBook) {
+        // Update book
+        const result = await updateBook(editingBook.id, bookData, coverFile);
+        if (result.success) {
+          setMessage({ type: 'success', text: 'Buku berhasil diperbarui!' });
+          setTimeout(async () => {
+            setShowModal(false);
+            setMessage({ type: '', text: '' });
+            setCoverFile(null);
+            setCoverPreview('');
+            await refreshBooks();
+          }, 1500);
+        } else {
+          setMessage({ type: 'error', text: result.message });
+        }
+      } else {
+        // Add new book
+        const result = await addBook(bookData, coverFile);
+        if (result.success) {
+          setMessage({ type: 'success', text: 'Buku berhasil ditambahkan!' });
+          setTimeout(async () => {
+            setShowModal(false);
+            setFormData(initialFormData);
+            setMessage({ type: '', text: '' });
+            await refreshBooks();
+          }, 1500);
+        } else {
+          setMessage({ type: 'error', text: result.message });
+        }
       }
-    } else {
-      // Add new book
-      const result = addBook(bookData);
-      if (result.success) {
-        setMessage({ type: 'success', text: 'Buku berhasil ditambahkan!' });
-        setTimeout(() => {
-          setShowModal(false);
-          setFormData(initialFormData);
-          setMessage({ type: '', text: '' });
-        }, 1500);
-      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Terjadi kesalahan' });
     }
 
-    setLoading(false);
+    setActionLoading(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (bookToDelete) {
-      deleteBook(bookToDelete.id);
-      setShowDeleteModal(false);
-      setBookToDelete(null);
+      setActionLoading(true);
+      try {
+        const result = await deleteBook(bookToDelete.idBuku);
+        if (result.success) {
+          setShowDeleteModal(false);
+          setBookToDelete(null);
+          await refreshBooks();
+        }
+      } catch (err) {
+        console.error('Delete error:', err);
+      }
+      setActionLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mt-2 animate-pulse"></div>
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <Card className="p-8 text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Coba Lagi</Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -178,59 +308,60 @@ const ManageBooks = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Buku
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                   Kategori
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                   Tahun
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Stok
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
                   Dipinjam
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Aksi
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredBooks.map((book) => (
+              {filteredBooks.length > 0 ? filteredBooks.map((book) => (
                 <tr key={book.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4">
+                    <div className="flex items-center gap-2">
                       <img
-                        src={book.cover}
+                        src={
+                          book.cover
+                            ? book.cover.startsWith('http')
+                              ? book.cover
+                              : book.cover !== 'default.jpg'
+                                ? `https://backend-libraone.vercel.app/uploads/${book.cover}`
+                                : '/placeholder-book.png'
+                            : '/placeholder-book.png'
+                        }
                         alt={book.title}
-                        className="w-10 h-14 object-cover rounded"
+                        className="w-8 h-12 sm:w-10 sm:h-14 object-cover rounded shrink-0"
+                        onError={(e) => { e.target.src = '/placeholder-book.png'; }}
                       />
                       <div className="min-w-0">
-                        <p className="font-medium text-gray-900 truncate max-w-xs">{book.title}</p>
-                        <p className="text-sm text-gray-500 truncate">{book.author}</p>
+                        <p className="font-medium text-gray-900 truncate text-sm max-w-80px sm:max-w-xs">{book.title}</p>
+                        <p className="text-xs text-gray-500 truncate hidden sm:block">{book.author}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-4 hidden sm:table-cell">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 hidden sm:table-cell">
                     <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
                       {book.category}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600 hidden md:table-cell">
-                    {book.year}
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-sm text-gray-600 hidden md:table-cell">
+                    {book.year || '-'}
                   </td>
-                  <td className="px-4 py-4">
-                    <span className={`font-medium ${book.stock > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {book.stock}
-                    </span>
+                  <td className="px-2 sm:px-4 py-3 sm:py-4 text-sm text-gray-600 hidden lg:table-cell">
+                    {book.borrowed || 0}x
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600 hidden lg:table-cell">
-                    {book.borrowed}x
-                  </td>
-                  <td className="px-4 py-4">
+                  <td className="px-2 sm:px-4 py-3 sm:py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => openEditModal(book)}
@@ -253,88 +384,71 @@ const ManageBooks = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                    Tidak ada buku ditemukan
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-
-        {filteredBooks.length === 0 && (
-          <div className="text-center py-12">
-            <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-            <p className="text-gray-500">Tidak ada buku ditemukan</p>
-          </div>
-        )}
       </Card>
 
       {/* Add/Edit Modal */}
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title={editingBook ? 'Edit Buku' : 'Tambah Buku Baru'}
-        size="lg"
-      >
+      <Modal isOpen={showModal} onClose={() => !actionLoading && setShowModal(false)}>
+        <h3 className="text-xl font-bold text-gray-900 mb-4">
+          {editingBook ? 'Edit Buku' : 'Tambah Buku Baru'}
+        </h3>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {message.text && (
-            <div className={`p-3 rounded-lg ${
-              message.type === 'success' 
-                ? 'bg-green-50 border border-green-200 text-green-700' 
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}>
-              {message.text}
-            </div>
+          {!editingBook && (
+            <Input
+              label="ID Buku (opsional)"
+              name="idBuku"
+              value={formData.idBuku}
+              onChange={handleChange}
+              placeholder="Contoh: buku001 (kosongkan untuk auto-generate)"
+            />
           )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Judul Buku"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="Masukkan judul buku"
-              required
-            />
-            <Input
-              label="Penulis"
-              name="author"
-              value={formData.author}
-              onChange={handleChange}
-              placeholder="Nama penulis"
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Penerbit"
-              name="publisher"
-              value={formData.publisher}
-              onChange={handleChange}
-              placeholder="Nama penerbit"
-              required
-            />
+          <Input
+            label="Judul Buku *"
+            name="title"
+            value={formData.title}
+            onChange={handleChange}
+            placeholder="Masukkan judul buku"
+            required
+          />
+          <Input
+            label="Penulis *"
+            name="author"
+            value={formData.author}
+            onChange={handleChange}
+            placeholder="Masukkan nama penulis"
+            required
+          />
+          <Input
+            label="Penerbit"
+            name="publisher"
+            value={formData.publisher}
+            onChange={handleChange}
+            placeholder="Masukkan nama penerbit"
+          />
+          <div className="grid grid-cols-2 gap-4">
             <Input
               label="Tahun Terbit"
               name="year"
               type="number"
               value={formData.year}
               onChange={handleChange}
-              min="1900"
-              max={new Date().getFullYear()}
             />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Kategori
-              </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
               <select
                 name="category"
                 value={formData.category}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {CATEGORIES.filter(c => c !== 'Semua').map((category) => (
                   <option key={category} value={category}>
@@ -343,95 +457,132 @@ const ManageBooks = () => {
                 ))}
               </select>
             </div>
-            <Input
-              label="Stok"
-              name="stock"
-              type="number"
-              value={formData.stock}
-              onChange={handleChange}
-              min="0"
-            />
+          </div>
+          <Input
+            label="Jumlah Halaman"
+            name="pages"
+            type="number"
+            value={formData.pages}
+            onChange={handleChange}
+          />
+          
+          {/* Cover Upload Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Cover Buku</label>
+            
+            {/* Preview */}
+            {coverPreview && (
+              <div className="relative mb-3 inline-block">
+                <img
+                  src={coverPreview}
+                  alt="Cover preview"
+                  className="w-32 h-44 object-cover rounded-lg border border-gray-200 shadow-sm"
+                  onError={(e) => {
+                    e.target.src = 'https://via.placeholder.com/128x176?text=No+Cover';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={clearCoverFile}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors shadow-md"
+                  title="Hapus cover"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
+            {/* File Input */}
+            <div className="flex items-center gap-3">
+              <label className="flex-1 cursor-pointer">
+                <div className="flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-emerald-500 hover:bg-emerald-50 transition-colors">
+                  <svg className="w-5 h-5 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm text-gray-600">
+                    {coverFile ? coverFile.name : 'Pilih file gambar...'}
+                  </span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Format: JPG, PNG, WebP. Maksimal 5MB
+            </p>
           </div>
 
-          <Input
-            label="URL Cover"
-            name="cover"
-            value={formData.cover}
-            onChange={handleChange}
-            placeholder="https://example.com/cover.jpg (opsional)"
-          />
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Sinopsis
-            </label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Sinopsis</label>
             <textarea
               name="synopsis"
               value={formData.synopsis}
               onChange={handleChange}
-              placeholder="Deskripsi singkat tentang buku..."
-              rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              rows={3}
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder="Masukkan sinopsis buku..."
             />
           </div>
 
-          <div className="flex gap-3 pt-4">
+          {message.text && (
+            <div className={`p-3 rounded-lg ${
+              message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}>
+              {message.text}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
             <Button
               type="button"
               variant="secondary"
               onClick={() => setShowModal(false)}
               className="flex-1"
-              disabled={loading}
+              disabled={actionLoading}
             >
               Batal
             </Button>
-            <Button
-              type="submit"
-              className="flex-1"
-              disabled={loading || message.type === 'success'}
-            >
-              {loading ? 'Menyimpan...' : editingBook ? 'Simpan Perubahan' : 'Tambah Buku'}
+            <Button type="submit" className="flex-1" disabled={actionLoading}>
+              {actionLoading ? 'Menyimpan...' : editingBook ? 'Simpan Perubahan' : 'Tambah Buku'}
             </Button>
           </div>
         </form>
       </Modal>
 
       {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        title="Hapus Buku"
-      >
-        <div className="space-y-4">
-          <div className="flex items-center gap-4 p-4 bg-red-50 rounded-lg">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium text-red-800">Apakah Anda yakin?</p>
-              <p className="text-sm text-red-600">
-                Buku <strong>"{bookToDelete?.title}"</strong> akan dihapus permanen.
-              </p>
-            </div>
+      <Modal isOpen={showDeleteModal} onClose={() => !actionLoading && setShowDeleteModal(false)}>
+        <div className="text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
           </div>
-
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Hapus Buku?</h3>
+          <p className="text-gray-600 mb-4">
+            Apakah kamu yakin ingin menghapus buku <strong>"{bookToDelete?.title}"</strong>?
+          </p>
           <div className="flex gap-3">
             <Button
               variant="secondary"
               onClick={() => setShowDeleteModal(false)}
               className="flex-1"
+              disabled={actionLoading}
             >
               Batal
             </Button>
-            <Button
-              variant="danger"
+            <button
               onClick={handleDelete}
-              className="flex-1"
+              disabled={actionLoading}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
             >
-              Ya, Hapus
-            </Button>
+              {actionLoading ? 'Menghapus...' : 'Ya, Hapus'}
+            </button>
           </div>
         </div>
       </Modal>

@@ -1,27 +1,80 @@
 // Book List Page
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import SearchBar from '../../components/common/SearchBar';
 import { CATEGORIES } from '../../utils/constants';
-import { truncateText } from '../../utils/helpers';
 
 const BookList = () => {
-  const { books, getPopularBooks } = useAuth();
+  const { getBooks, getPopularBooks } = useAuth();
+  const [books, setBooks] = useState([]);
+  const [popularBooks, setPopularBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
 
-  const popularBooks = getPopularBooks(5);
+  // Fetch books from API
+  useEffect(() => {
+    const fetchBooks = async () => {
+      try {
+        setLoading(true);
+        const [allBooks, popular] = await Promise.all([
+          getBooks(),
+          getPopularBooks()
+        ]);
+        setBooks(allBooks);
+        setPopularBooks(popular.slice(0, 5));
+      } catch (err) {
+        console.error('Error fetching books:', err);
+        setError('Gagal memuat data buku');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBooks();
+  }, [getBooks, getPopularBooks]);
 
   // Filter books
   const filteredBooks = books.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         book.author.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = book.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         book.author?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'Semua' || book.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mb-8"></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="bg-gray-200 rounded-lg h-64"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto text-center py-12">
+        <p className="text-red-500">{error}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -32,34 +85,36 @@ const BookList = () => {
       </div>
 
       {/* Popular Books Section */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <svg className="w-5 h-5 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-          </svg>
-          Buku Terpopuler
-        </h2>
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-          {popularBooks.map((book) => (
-            <Link key={book.id} to={`/books/${book.id}`} className="shrink-0">
-              <div className="w-40 group">
-                <div className="relative overflow-hidden rounded-lg shadow-md">
-                  <img
-                    src={book.cover}
-                    alt={book.title}
-                    className="w-40 h-56 object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute top-2 left-2 bg-yellow-500 text-white text-xs font-bold px-2 py-1 rounded">
-                    Populer
+      {popularBooks.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <svg className="w-5 h-5 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+            Buku Terpopuler
+          </h2>
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+            {popularBooks.map((book) => (
+              <Link key={book.id || book.idBuku} to={`/books/${book.idBuku || book.id}`} className="shrink-0">
+                <div className="w-40 group">
+                  <div className="relative overflow-hidden rounded-lg shadow-md">
+                    <img
+                      src={book.cover || 'https://via.placeholder.com/160x224?text=No+Cover'}
+                      alt={book.title}
+                      className="w-40 h-56 object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute top-2 left-2 bg-yellow-500 text-white text-xs font-bold px-2 py-1 rounded">
+                      Populer
+                    </div>
                   </div>
+                  <h3 className="font-medium text-gray-900 mt-2 text-sm truncate">{book.title}</h3>
+                  <p className="text-xs text-gray-500 truncate">{book.author}</p>
                 </div>
-                <h3 className="font-medium text-gray-900 mt-2 text-sm truncate">{book.title}</h3>
-                <p className="text-xs text-gray-500 truncate">{book.author}</p>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -91,17 +146,17 @@ const BookList = () => {
       {filteredBooks.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {filteredBooks.map((book) => (
-            <Link key={book.id} to={`/books/${book.id}`}>
+            <Link key={book.idBuku || book.id} to={`/books/${book.idBuku || book.id}`}>
               <Card hover padding="sm" className="h-full">
                 <div className="relative">
                   <img
-                    src={book.cover}
+                    src={book.cover || 'https://via.placeholder.com/160x192?text=No+Cover'}
                     alt={book.title}
                     className="w-full h-48 object-cover rounded-lg"
                   />
-                  {book.stock === 0 && (
+                  {book.status === 'dipinjam' && (
                     <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-medium text-sm">Tidak Tersedia</span>
+                      <span className="text-white font-medium text-sm">Dipinjam</span>
                     </div>
                   )}
                   <span className="absolute top-2 right-2 bg-emerald-500 text-white text-xs px-2 py-1 rounded">
@@ -112,11 +167,8 @@ const BookList = () => {
                   <h3 className="font-medium text-gray-900 text-sm truncate">{book.title}</h3>
                   <p className="text-xs text-gray-500 truncate">{book.author}</p>
                   <div className="flex items-center justify-between mt-2">
-                    <span className={`text-xs ${book.stock > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      Stok: {book.stock}
-                    </span>
                     <span className="text-xs text-gray-400">
-                      {book.borrowed}x dipinjam
+                      {book.borrowed || 0}x dipinjam
                     </span>
                   </div>
                 </div>

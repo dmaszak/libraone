@@ -1,46 +1,137 @@
-// Fines Page
+// Fines Page - API Version
 
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
-import { formatDate, calculateFine, daysBetween } from '../../utils/helpers';
 import { FINE_PER_DAY } from '../../utils/constants';
 
 const Fines = () => {
-  const { books, getOverdueLoans } = useAuth();
+  const { getMyFines, payFine } = useAuth();
   
-  const overdueLoans = getOverdueLoans();
+  const [fineData, setFineData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [payLoading, setPayLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
 
-  const getBookById = (bookId) => books.find(b => b.id === bookId);
+  useEffect(() => {
+    const fetchFines = async () => {
+      try {
+        setLoading(true);
+        const data = await getMyFines();
+        setFineData(data);
+      } catch (err) {
+        console.error('Error fetching fines:', err);
+        setError('Gagal memuat data denda');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // Calculate total fine
-  const totalFine = overdueLoans.reduce((total, loan) => {
-    return total + calculateFine(loan.dueDate);
-  }, 0);
+    fetchFines();
+  }, []);
+
+  const handlePayFine = async (id) => {
+    setPayLoading(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const result = await payFine(id);
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message });
+        // Refresh data
+        const data = await getMyFines();
+        setFineData(data);
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Gagal membayar denda' });
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mb-8"></div>
+          <div className="bg-gray-200 rounded-lg h-32 mb-6"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-red-500">{error}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
+
+  const totalFine = fineData?.total || fineData?.total_denda || 0;
+  const hasFine = totalFine > 0;
 
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Denda</h1>
-        <p className="text-gray-600 mt-1">Daftar buku yang terlambat dikembalikan</p>
+        <p className="text-gray-600 mt-1">Informasi denda keterlambatan pengembalian buku</p>
       </div>
 
+      {/* Message */}
+      {message.text && (
+        <div className={`mb-6 p-4 rounded-lg ${
+          message.type === 'success' 
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
       {/* Total Fine Card */}
-      {overdueLoans.length > 0 && (
+      {hasFine ? (
         <Card className="bg-linear-to-r from-red-500 to-red-600 text-white mb-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-red-100 text-sm">Total Denda</p>
               <p className="text-3xl font-bold">Rp {totalFine.toLocaleString('id-ID')}</p>
               <p className="text-red-100 text-sm mt-1">
-                {overdueLoans.length} buku terlambat
+                Segera bayar untuk menghindari denda bertambah
               </p>
             </div>
             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card className="bg-linear-to-r from-emerald-500 to-emerald-600 text-white mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-emerald-100 text-sm">Status Denda</p>
+              <p className="text-2xl font-bold">Tidak Ada Denda</p>
+              <p className="text-emerald-100 text-sm mt-1">
+                Kamu tidak memiliki denda saat ini 🎉
+              </p>
+            </div>
+            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
           </div>
@@ -65,91 +156,42 @@ const Fines = () => {
         </div>
       </Card>
 
-      {/* Overdue Books List */}
-      {overdueLoans.length > 0 ? (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Buku Terlambat</h2>
-          {overdueLoans.map((loan) => {
-            const book = getBookById(loan.bookId);
-            if (!book) return null;
+      {/* Pay Fine Button */}
+      {hasFine && (
+        <Card className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">Bayar Denda</h3>
+              <p className="text-sm text-gray-500">Bayar denda untuk melanjutkan peminjaman buku</p>
+            </div>
+            <Button 
+              onClick={() => handlePayFine(fineData?.id)} 
+              disabled={payLoading}
+            >
+              {payLoading ? 'Memproses...' : 'Bayar Sekarang'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
-            const fine = calculateFine(loan.dueDate);
-            const daysLate = daysBetween(loan.dueDate, new Date().toISOString().split('T')[0]);
-
-            return (
-              <Card key={loan.id} className="border-red-200">
-                <div className="flex gap-4">
-                  <Link to={`/books/${book.id}`}>
-                    <img
-                      src={book.cover}
-                      alt={book.title}
-                      className="w-20 h-28 object-cover rounded-lg shrink-0"
-                    />
-                  </Link>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <Link to={`/books/${book.id}`}>
-                          <h3 className="font-semibold text-gray-900 hover:text-emerald-600">{book.title}</h3>
-                        </Link>
-                        <p className="text-sm text-gray-500">{book.author}</p>
-                      </div>
-                      <span className="px-3 py-1 bg-red-100 text-red-600 text-sm font-bold rounded-full">
-                        Rp {fine.toLocaleString('id-ID')}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
-                      <div>
-                        <p className="text-gray-500">Tanggal Pinjam</p>
-                        <p className="font-medium text-gray-900">{formatDate(loan.borrowDate)}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Jatuh Tempo</p>
-                        <p className="font-medium text-red-600">{formatDate(loan.dueDate)}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Terlambat</p>
-                        <p className="font-medium text-red-600">{daysLate} hari</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 p-2 bg-red-50 rounded-lg">
-                      <p className="text-sm text-red-700">
-                        Perhitungan: {daysLate} hari × Rp {FINE_PER_DAY.toLocaleString('id-ID')} = <strong>Rp {fine.toLocaleString('id-ID')}</strong>
-                      </p>
-                    </div>
-
-                    <div className="mt-3">
-                      <Link to="/my-loans">
-                        <Button size="sm">Kembalikan Sekarang</Button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      {/* Tips */}
+      <Card className="bg-blue-50 border-blue-200">
+        <div className="flex items-start space-x-3">
+          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900">Tidak Ada Denda</h3>
-          <p className="text-gray-500 mt-2">
-            Selamat! Kamu tidak memiliki denda keterlambatan.
-          </p>
-          <p className="text-sm text-gray-400 mt-1">
-            Terus pertahankan untuk mengembalikan buku tepat waktu ya!
-          </p>
-          <Link to="/books">
-            <Button className="mt-4" variant="outline">Jelajahi Buku</Button>
-          </Link>
+          <div>
+            <p className="font-medium text-blue-800">Tips Menghindari Denda</p>
+            <ul className="text-sm text-blue-700 mt-1 list-disc list-inside space-y-1">
+              <li>Aktifkan notifikasi untuk reminder jatuh tempo</li>
+              <li>Perpanjang peminjaman sebelum jatuh tempo</li>
+              <li>Kembalikan buku tepat waktu</li>
+            </ul>
+          </div>
         </div>
-      )}
+      </Card>
     </div>
   );
 };

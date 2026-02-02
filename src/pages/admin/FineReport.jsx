@@ -1,44 +1,89 @@
 // Fine Report Page (Admin)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import SearchBar from '../../components/common/SearchBar';
-import { formatDate, formatCurrency, calculateFine, daysBetween } from '../../utils/helpers';
+import { formatCurrency } from '../../utils/helpers';
 import { FINE_PER_DAY } from '../../utils/constants';
 
 const FineReport = () => {
-  const { books, users, getAllFines } = useAuth();
+  const { getFines } = useAuth();
+  
+  const [fines, setFines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const allFines = getAllFines();
+  useEffect(() => {
+    const fetchFines = async () => {
+      try {
+        setLoading(true);
+        const data = await getFines();
+        setFines(data);
+      } catch (err) {
+        console.error('Error fetching fines:', err);
+        setError('Gagal memuat data denda');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const getBookById = (bookId) => books.find(b => b.id === bookId);
-  const getUserById = (userId) => users.find(u => u.id === userId);
+    fetchFines();
+  }, [getFines]);
 
   // Calculate total fines
-  const totalFines = allFines.reduce((total, loan) => {
-    return total + calculateFine(loan.dueDate);
-  }, 0);
+  const totalFines = fines.reduce((total, fine) => total + (fine.totalFine || 0), 0);
 
   // Filter fines
-  const filteredFines = allFines.filter(loan => {
-    const book = getBookById(loan.bookId);
-    const user = getUserById(loan.userId || loan.oderId);
+  const filteredFines = fines.filter(fine => {
     const searchLower = searchQuery.toLowerCase();
-    return (
-      book?.title.toLowerCase().includes(searchLower) ||
-      user?.name.toLowerCase().includes(searchLower) ||
-      user?.email.toLowerCase().includes(searchLower)
-    );
+    return fine.user?.toLowerCase().includes(searchLower);
   });
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mt-2 animate-pulse"></div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {[1, 2].map(i => (
+            <div key={i} className="h-24 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <Card className="p-8 text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Coba Lagi
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Laporan Denda</h1>
-        <p className="text-gray-600 mt-1">Daftar user dengan keterlambatan pengembalian</p>
+        <p className="text-gray-600 mt-1">Daftar user dengan denda aktif</p>
       </div>
 
       {/* Stats */}
@@ -60,12 +105,12 @@ const FineReport = () => {
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
               <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </div>
             <div>
-              <p className="text-sm text-yellow-600">Buku Terlambat</p>
-              <p className="text-2xl font-bold text-yellow-700">{allFines.length} buku</p>
+              <p className="text-sm text-yellow-600">User dengan Denda</p>
+              <p className="text-2xl font-bold text-yellow-700">{fines.length} user</p>
             </div>
           </div>
         </Card>
@@ -78,7 +123,7 @@ const FineReport = () => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <p className="text-sm text-blue-700">
-            Denda dihitung <strong>{formatCurrency(FINE_PER_DAY)}</strong> per hari keterlambatan untuk setiap buku.
+            Denda keterlambatan: <strong>{formatCurrency(FINE_PER_DAY)}</strong> per hari
           </p>
         </div>
       </Card>
@@ -88,7 +133,7 @@ const FineReport = () => {
         <SearchBar
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Cari buku atau peminjam..."
+          placeholder="Cari nama user..."
           className="max-w-md"
         />
       </div>
@@ -100,85 +145,43 @@ const FineReport = () => {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Peminjam
+                  User
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Buku
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                  Jatuh Tempo
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Terlambat
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Denda
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Total Denda
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredFines.map((loan) => {
-                const book = getBookById(loan.bookId);
-                const user = getUserById(loan.userId || loan.oderId);
-                const fine = calculateFine(loan.dueDate);
-                const daysLate = daysBetween(loan.dueDate, new Date().toISOString().split('T')[0]);
-
-                return (
-                  <tr key={loan.id} className="hover:bg-gray-50 bg-red-50">
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={user?.avatar}
-                          alt={user?.name}
-                          className="w-8 h-8 rounded-full"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{user?.name}</p>
-                          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                        </div>
+              {filteredFines.length > 0 ? filteredFines.map((fine, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-linear-to-br from-red-400 to-red-600 flex items-center justify-center text-white font-bold">
+                        {fine.user?.charAt(0)?.toUpperCase() || '?'}
                       </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={book?.cover}
-                          alt={book?.title}
-                          className="w-8 h-12 object-cover rounded"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate max-w-xs">{book?.title}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 text-sm text-red-600 hidden sm:table-cell">
-                      {formatDate(loan.dueDate)}
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="px-2 py-1 bg-red-100 text-red-700 text-sm font-medium rounded-full">
-                        {daysLate} hari
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="font-bold text-red-600">{formatCurrency(fine)}</span>
-                    </td>
-                  </tr>
-                );
-              })}
+                      <p className="font-medium text-gray-900">{fine.user}</p>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <span className="font-bold text-red-600">{formatCurrency(fine.totalFine || 0)}</span>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan="2" className="px-4 py-8 text-center text-gray-500">
+                    <div className="flex flex-col items-center">
+                      <svg className="w-12 h-12 text-green-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p>Tidak ada denda tercatat</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-
-        {filteredFines.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <p className="text-gray-500">Tidak ada denda keterlambatan</p>
-            <p className="text-sm text-gray-400 mt-1">Semua peminjaman tepat waktu</p>
-          </div>
-        )}
       </Card>
     </div>
   );

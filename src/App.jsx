@@ -33,9 +33,9 @@ import UserRanking from './pages/admin/UserRanking';
 
 // Protected Route for authenticated users
 const ProtectedRoute = ({ children, allowedRole }) => {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useAuth();
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -59,9 +59,9 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 
 // Public Route (redirect if already logged in)
 const PublicRoute = ({ children }) => {
-  const { user, isLoading } = useAuth();
+  const { user, loading } = useAuth();
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -136,7 +136,7 @@ const AppRoutes = () => {
         <Route path="returns" element={<ReturnList />} />
         <Route path="fines" element={<FineReport />} />
         <Route path="popular" element={<PopularBooks />} />
-        <Route path="ranking" element={<UserRanking />} />
+        <Route path="rankings" element={<UserRanking />} />
       </Route>
 
       {/* Catch all - redirect to login */}

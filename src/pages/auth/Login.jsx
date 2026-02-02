@@ -21,19 +21,23 @@ const Login = () => {
     setError('');
     setLoading(true);
 
-    const result = login(email, password);
-    
-    if (result.success) {
-      if (result.user.role === 'admin') {
-        navigate('/admin');
+    try {
+      const result = await login(email, password);
+      
+      if (result.success) {
+        if (result.user.role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
-        navigate('/dashboard');
+        setError(result.message);
       }
-    } else {
-      setError(result.message);
+    } catch (err) {
+      setError('Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   return (
@@ -127,17 +131,10 @@ const Login = () => {
             </form>
 
             <div className="mt-6 text-center space-y-2">
-              <p className="text-gray-600">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('admin@libraone.com');
-                    setPassword('admin123');
-                  }}
-                  className="text-emerald-600 hover:text-emerald-700 font-semibold"
-                >
-                  Login sebagai Admin
-                </button>
+              <p className="text-gray-600 text-sm">
+                <span className="text-gray-500">
+                  Admin login memerlukan akun admin terdaftar di database.
+                </span>
               </p>
               <p className="text-gray-600">
                 Belum punya akun ?{' '}

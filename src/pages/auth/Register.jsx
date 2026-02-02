@@ -44,15 +44,19 @@ const Register = () => {
 
     setLoading(true);
 
-    const result = register(formData.name, formData.email, formData.password);
-    
-    if (result.success) {
-      navigate('/login', { state: { message: 'Registrasi berhasil! Silakan login.' } });
-    } else {
-      setError(result.message);
+    try {
+      const result = await register(formData.name, formData.email, formData.password);
+      
+      if (result.success) {
+        navigate('/login', { state: { message: 'Registrasi berhasil! Silakan login.' } });
+      } else {
+        setError(result.message);
+      }
+    } catch (err) {
+      setError('Terjadi kesalahan. Silakan coba lagi.');
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   return (

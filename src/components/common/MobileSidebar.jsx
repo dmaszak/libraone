@@ -127,7 +127,7 @@ const MobileSidebar = () => {
               <img
                 src={user.avatar}
                 alt={user.name}
-                className="w-12 h-12 rounded-full"
+                className="w-12 h-12 rounded-full object-cover"
               />
               <div>
                 <p className="font-medium text-gray-900">{user.name}</p>

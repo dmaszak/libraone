@@ -1,32 +1,91 @@
 // Loan List Page (Admin)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import SearchBar from '../../components/common/SearchBar';
 import { formatDate, isOverdue } from '../../utils/helpers';
 
 const LoanList = () => {
-  const { books, users, getAllLoans } = useAuth();
+  const { getAllLoans } = useAuth();
+  
+  const [loans, setLoans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const allLoans = getAllLoans();
-  const activeLoans = allLoans.filter(l => l.status === 'active' || l.status === 'overdue');
+  useEffect(() => {
+    const fetchLoans = async () => {
+      try {
+        setLoading(true);
+        const data = await getAllLoans();
+        setLoans(data);
+      } catch (err) {
+        console.error('Error fetching loans:', err);
+        setError('Gagal memuat data peminjaman');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const getBookById = (bookId) => books.find(b => b.id === bookId);
-  const getUserById = (userId) => users.find(u => u.id === userId);
+    fetchLoans();
+  }, [getAllLoans]);
 
-  // Filter loans
+  // Filter active loans
+  const activeLoans = loans.filter(l => 
+    l.status === 'active' || l.status === 'aktif' || l.status === 'overdue' || l.status === 'terlambat'
+  );
+
+  // Filter loans by search
   const filteredLoans = activeLoans.filter(loan => {
-    const book = getBookById(loan.bookId);
-    const user = getUserById(loan.userId || loan.oderId);
     const searchLower = searchQuery.toLowerCase();
     return (
-      book?.title.toLowerCase().includes(searchLower) ||
-      user?.name.toLowerCase().includes(searchLower) ||
-      user?.email.toLowerCase().includes(searchLower)
+      loan.bookTitle?.toLowerCase().includes(searchLower) ||
+      loan.userName?.toLowerCase().includes(searchLower) ||
+      loan.author?.toLowerCase().includes(searchLower)
     );
   });
+
+  // Calculate stats
+  const onTimeLoans = activeLoans.filter(l => !isOverdue(l.dueDate));
+  const overdueLoans = activeLoans.filter(l => isOverdue(l.dueDate));
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mt-2 animate-pulse"></div>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-20 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <Card className="p-8 text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Coba Lagi
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -44,15 +103,11 @@ const LoanList = () => {
         </Card>
         <Card className="bg-green-50 border-green-200">
           <p className="text-sm text-green-600">Tepat Waktu</p>
-          <p className="text-2xl font-bold text-green-700">
-            {activeLoans.filter(l => !isOverdue(l.dueDate)).length}
-          </p>
+          <p className="text-2xl font-bold text-green-700">{onTimeLoans.length}</p>
         </Card>
         <Card className="bg-red-50 border-red-200">
           <p className="text-sm text-red-600">Terlambat</p>
-          <p className="text-2xl font-bold text-red-700">
-            {activeLoans.filter(l => isOverdue(l.dueDate)).length}
-          </p>
+          <p className="text-2xl font-bold text-red-700">{overdueLoans.length}</p>
         </Card>
       </div>
 
@@ -72,72 +127,46 @@ const LoanList = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Buku
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                   Peminjam
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                   Tanggal Pinjam
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Jatuh Tempo
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                  Perpanjangan
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredLoans.map((loan) => {
-                const book = getBookById(loan.bookId);
-                const user = getUserById(loan.userId || loan.oderId);
+              {filteredLoans.length > 0 ? filteredLoans.map((loan) => {
                 const overdue = isOverdue(loan.dueDate);
-
                 return (
-                  <tr key={loan.id} className={`hover:bg-gray-50 ${overdue ? 'bg-red-50' : ''}`}>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={book?.cover}
-                          alt={book?.title}
-                          className="w-10 h-14 object-cover rounded"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 truncate max-w-xs">{book?.title}</p>
-                          <p className="text-sm text-gray-500 truncate">{book?.author}</p>
-                        </div>
+                  <tr key={loan.id} className="hover:bg-gray-50">
+                    <td className="px-2 sm:px-4 py-3 sm:py-4">
+                      <div>
+                        <p className="font-medium text-gray-900 truncate max-w-xs">{loan.bookTitle}</p>
+                        <p className="text-xs text-gray-500 truncate">{loan.author}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={user?.avatar}
-                          alt={user?.name}
-                          className="w-8 h-8 rounded-full"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{user?.name}</p>
-                          <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                        </div>
-                      </div>
+                    <td className="px-2 sm:px-4 py-3 sm:py-4 text-sm text-gray-600 hidden sm:table-cell">
+                      {loan.userName || '-'}
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-600 hidden sm:table-cell">
+                    <td className="px-2 sm:px-4 py-3 sm:py-4 text-sm text-gray-600 hidden md:table-cell">
                       {formatDate(loan.borrowDate)}
                     </td>
-                    <td className="px-4 py-4">
-                      <span className={`text-sm font-medium ${overdue ? 'text-red-600' : 'text-gray-900'}`}>
+                    <td className="px-2 sm:px-4 py-3 sm:py-4 text-sm">
+                      <span className={overdue ? 'text-red-600 font-medium' : 'text-gray-600'}>
                         {formatDate(loan.dueDate)}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-600 hidden md:table-cell">
-                      {loan.extensionCount}/2
-                    </td>
-                    <td className="px-4 py-4">
+                    <td className="px-2 sm:px-4 py-3 sm:py-4">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                         overdue 
                           ? 'bg-red-100 text-red-700' 
@@ -148,19 +177,16 @@ const LoanList = () => {
                     </td>
                   </tr>
                 );
-              })}
+              }) : (
+                <tr>
+                  <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
+                    Tidak ada peminjaman aktif
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-
-        {filteredLoans.length === 0 && (
-          <div className="text-center py-12">
-            <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            <p className="text-gray-500">Tidak ada peminjaman aktif</p>
-          </div>
-        )}
       </Card>
     </div>
   );

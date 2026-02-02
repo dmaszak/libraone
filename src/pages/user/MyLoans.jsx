@@ -1,100 +1,132 @@
-// My Loans Page
+// My Loans Page - API Version
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
-import { formatDate, calculateFine, isOverdue } from '../../utils/helpers';
-import { MAX_EXTENSIONS, FINE_PER_DAY, XP_PER_RETURN } from '../../utils/constants';
+import { formatDate } from '../../utils/helpers';
+import { MAX_EXTENSIONS } from '../../utils/constants';
 
 const MyLoans = () => {
-  const { books, getActiveLoans, getLoanHistory, extendLoan, returnBook } = useAuth();
+  const { getActiveLoans, getLoanHistory, extendLoan, returnBook } = useAuth();
   
   const [activeTab, setActiveTab] = useState('active');
+  const [activeLoans, setActiveLoans] = useState([]);
+  const [loanHistory, setLoanHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const activeLoans = getActiveLoans();
-  const loanHistory = getLoanHistory();
+  // Fetch loans from API
+  useEffect(() => {
+    const fetchLoans = async () => {
+      try {
+        setLoading(true);
+        const [active, history] = await Promise.all([
+          getActiveLoans(),
+          getLoanHistory()
+        ]);
+        setActiveLoans(active || []);
+        setLoanHistory(history || []);
+      } catch (err) {
+        console.error('Error fetching loans:', err);
+        setError('Gagal memuat data peminjaman');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const getBookById = (bookId) => books.find(b => b.id === bookId);
+    fetchLoans();
+  }, []);
+
+  const refreshLoans = async () => {
+    try {
+      const [active, history] = await Promise.all([
+        getActiveLoans(),
+        getLoanHistory()
+      ]);
+      setActiveLoans(active || []);
+      setLoanHistory(history || []);
+    } catch (err) {
+      console.error('Error refreshing loans:', err);
+    }
+  };
 
   const handleExtend = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setMessage({ type: '', text: '' });
 
-    const result = extendLoan(selectedLoan.id);
-    
-    if (result.success) {
-      setMessage({ type: 'success', text: 'Peminjaman berhasil diperpanjang!' });
-      setTimeout(() => {
-        setShowExtendModal(false);
-        setSelectedLoan(null);
-        setMessage({ type: '', text: '' });
-      }, 1500);
-    } else {
-      setMessage({ type: 'error', text: result.message });
+    try {
+      const result = await extendLoan(selectedLoan.id);
+      
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message || 'Peminjaman berhasil diperpanjang!' });
+        await refreshLoans();
+        setTimeout(() => {
+          setShowExtendModal(false);
+          setSelectedLoan(null);
+          setMessage({ type: '', text: '' });
+        }, 1500);
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Terjadi kesalahan' });
+    } finally {
+      setActionLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const handleReturn = async () => {
-    setLoading(true);
+    setActionLoading(true);
     setMessage({ type: '', text: '' });
 
-    const result = returnBook(selectedLoan.id);
-    
-    if (result.success) {
-      setMessage({ type: 'success', text: `Buku berhasil dikembalikan! +${result.xpEarned} XP` });
-      setTimeout(() => {
-        setShowReturnModal(false);
-        setSelectedLoan(null);
-        setMessage({ type: '', text: '' });
-      }, 1500);
-    } else {
-      setMessage({ type: 'error', text: result.message });
+    try {
+      const result = await returnBook(selectedLoan.id);
+      
+      if (result.success) {
+        const fineMsg = result.fine > 0 ? ` Denda: Rp ${result.fine.toLocaleString('id-ID')}` : '';
+        setMessage({ type: 'success', text: `${result.message}${fineMsg}` });
+        await refreshLoans();
+        setTimeout(() => {
+          setShowReturnModal(false);
+          setSelectedLoan(null);
+          setMessage({ type: '', text: '' });
+        }, 1500);
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Terjadi kesalahan' });
+    } finally {
+      setActionLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const LoanCard = ({ loan, showActions = true }) => {
-    const book = getBookById(loan.bookId);
-    if (!book) return null;
-
-    const overdue = isOverdue(loan.dueDate) && loan.status !== 'returned';
-    const fine = calculateFine(loan.dueDate, loan.returnDate);
-    const canExtend = loan.extensionCount < MAX_EXTENSIONS && !overdue && loan.status === 'active';
+    const isOverdue = new Date(loan.dueDate) < new Date() && loan.status !== 'dikembalikan';
+    const canExtend = (loan.extensionCount || 0) < MAX_EXTENSIONS && !isOverdue;
 
     return (
-      <Card className={`${overdue ? 'border-red-200 bg-red-50' : ''}`}>
-        <div className="flex gap-4">
-          <Link to={`/books/${book.id}`}>
-            <img
-              src={book.cover}
-              alt={book.title}
-              className="w-20 h-28 object-cover rounded-lg shrink-0"
-            />
-          </Link>
+      <Card className={`${isOverdue ? 'border-red-200 bg-red-50' : ''}`}>
+        <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between">
               <div>
-                <Link to={`/books/${book.id}`}>
-                  <h3 className="font-semibold text-gray-900 hover:text-emerald-600">{book.title}</h3>
-                </Link>
-                <p className="text-sm text-gray-500">{book.author}</p>
+                <h3 className="font-semibold text-gray-900">{loan.title}</h3>
+                <p className="text-sm text-gray-500">{loan.author}</p>
               </div>
-              {loan.status === 'returned' ? (
+              {loan.status === 'dikembalikan' ? (
                 <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
                   Dikembalikan
                 </span>
-              ) : overdue ? (
+              ) : isOverdue ? (
                 <span className="px-2 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-full">
                   Terlambat
                 </span>
@@ -111,30 +143,20 @@ const MyLoans = () => {
                 <p className="font-medium text-gray-900">{formatDate(loan.borrowDate)}</p>
               </div>
               <div>
-                <p className="text-gray-500">
-                  {loan.status === 'returned' ? 'Tanggal Kembali' : 'Jatuh Tempo'}
-                </p>
-                <p className={`font-medium ${overdue ? 'text-red-600' : 'text-gray-900'}`}>
-                  {formatDate(loan.status === 'returned' ? loan.returnDate : loan.dueDate)}
+                <p className="text-gray-500">Jatuh Tempo</p>
+                <p className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-900'}`}>
+                  {formatDate(loan.dueDate)}
                 </p>
               </div>
             </div>
 
-            {loan.extensionCount > 0 && loan.status !== 'returned' && (
+            {loan.extensionCount > 0 && loan.status !== 'dikembalikan' && (
               <p className="text-xs text-gray-500 mt-2">
                 Diperpanjang {loan.extensionCount}x dari max {MAX_EXTENSIONS}x
               </p>
             )}
 
-            {overdue && loan.status !== 'returned' && (
-              <div className="mt-2 p-2 bg-red-100 rounded-lg">
-                <p className="text-sm text-red-700">
-                  Denda: <span className="font-bold">Rp {fine.toLocaleString('id-ID')}</span>
-                </p>
-              </div>
-            )}
-
-            {showActions && loan.status !== 'returned' && (
+            {showActions && loan.status !== 'dikembalikan' && (
               <div className="flex gap-2 mt-4">
                 {canExtend && (
                   <Button
@@ -164,6 +186,36 @@ const MyLoans = () => {
       </Card>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mb-8"></div>
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-gray-200 rounded-lg h-32"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-red-500">{error}</p>
+        <button 
+          onClick={() => window.location.reload()} 
+          className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+        >
+          Coba Lagi
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -248,63 +300,34 @@ const MyLoans = () => {
             {message.text && (
               <div className={`p-3 rounded-lg ${
                 message.type === 'success' 
-                  ? 'bg-green-50 border border-green-200 text-green-700' 
-                  : 'bg-red-50 border border-red-200 text-red-700'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
               }`}>
                 {message.text}
               </div>
             )}
 
-            <div className="flex gap-4">
-              <img
-                src={getBookById(selectedLoan.bookId)?.cover}
-                alt={getBookById(selectedLoan.bookId)?.title}
-                className="w-16 h-24 object-cover rounded-lg"
-              />
-              <div>
-                <h4 className="font-semibold text-gray-900">{getBookById(selectedLoan.bookId)?.title}</h4>
-                <p className="text-sm text-gray-500">{getBookById(selectedLoan.bookId)?.author}</p>
-              </div>
-            </div>
+            <p className="text-gray-600">
+              Perpanjang peminjaman buku <strong>{selectedLoan.title}</strong>?
+            </p>
+            <p className="text-sm text-gray-500">
+              Peminjaman akan diperpanjang 2 hari dari tanggal jatuh tempo saat ini.
+            </p>
 
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Jatuh Tempo Saat Ini</span>
-                <span className="font-medium text-gray-900">{formatDate(selectedLoan.dueDate)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Jatuh Tempo Baru</span>
-                <span className="font-medium text-emerald-600">
-                  {formatDate(new Date(new Date(selectedLoan.dueDate).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Perpanjangan</span>
-                <span className="font-medium text-gray-900">
-                  {selectedLoan.extensionCount + 1} dari {MAX_EXTENSIONS}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
+            <div className="flex justify-end gap-3 mt-6">
+              <Button 
+                variant="outline" 
                 onClick={() => {
                   setShowExtendModal(false);
                   setSelectedLoan(null);
                   setMessage({ type: '', text: '' });
                 }}
-                className="flex-1"
-                disabled={loading}
+                disabled={actionLoading}
               >
                 Batal
               </Button>
-              <Button
-                onClick={handleExtend}
-                className="flex-1"
-                disabled={loading || message.type === 'success'}
-              >
-                {loading ? 'Memproses...' : 'Perpanjang'}
+              <Button onClick={handleExtend} disabled={actionLoading}>
+                {actionLoading ? 'Memproses...' : 'Perpanjang'}
               </Button>
             </div>
           </div>
@@ -326,59 +349,31 @@ const MyLoans = () => {
             {message.text && (
               <div className={`p-3 rounded-lg ${
                 message.type === 'success' 
-                  ? 'bg-green-50 border border-green-200 text-green-700' 
-                  : 'bg-red-50 border border-red-200 text-red-700'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
               }`}>
                 {message.text}
               </div>
             )}
 
-            <div className="flex gap-4">
-              <img
-                src={getBookById(selectedLoan.bookId)?.cover}
-                alt={getBookById(selectedLoan.bookId)?.title}
-                className="w-16 h-24 object-cover rounded-lg"
-              />
-              <div>
-                <h4 className="font-semibold text-gray-900">{getBookById(selectedLoan.bookId)?.title}</h4>
-                <p className="text-sm text-gray-500">{getBookById(selectedLoan.bookId)?.author}</p>
-              </div>
-            </div>
+            <p className="text-gray-600">
+              Kembalikan buku <strong>{selectedLoan.title}</strong>?
+            </p>
 
-            {isOverdue(selectedLoan.dueDate) && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-700 font-medium">Buku ini terlambat dikembalikan!</p>
-                <p className="text-red-600 text-sm mt-1">
-                  Denda yang harus dibayar: <span className="font-bold">Rp {calculateFine(selectedLoan.dueDate).toLocaleString('id-ID')}</span>
-                </p>
-              </div>
-            )}
-
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-              <p className="text-emerald-700">
-                Kamu akan mendapatkan <span className="font-bold">+{XP_PER_RETURN} XP</span> setelah mengembalikan buku ini!
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
+            <div className="flex justify-end gap-3 mt-6">
+              <Button 
+                variant="outline" 
                 onClick={() => {
                   setShowReturnModal(false);
                   setSelectedLoan(null);
                   setMessage({ type: '', text: '' });
                 }}
-                className="flex-1"
-                disabled={loading}
+                disabled={actionLoading}
               >
                 Batal
               </Button>
-              <Button
-                onClick={handleReturn}
-                className="flex-1"
-                disabled={loading || message.type === 'success'}
-              >
-                {loading ? 'Memproses...' : 'Kembalikan'}
+              <Button onClick={handleReturn} disabled={actionLoading}>
+                {actionLoading ? 'Memproses...' : 'Kembalikan'}
               </Button>
             </div>
           </div>

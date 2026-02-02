@@ -1,36 +1,72 @@
 // User List Page (Admin)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import SearchBar from '../../components/common/SearchBar';
-import { formatDate } from '../../utils/helpers';
 
 const UserList = () => {
-  const { users, loans } = useAuth();
+  const { getAllUsers } = useAuth();
+  
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Get only regular users (not admin)
-  const regularUsers = users.filter(u => u.role === 'user');
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        const data = await getAllUsers();
+        setUsers(data);
+      } catch (err) {
+        console.error('Error fetching users:', err);
+        setError('Gagal memuat data user');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // Filter users
-  const filteredUsers = regularUsers.filter(user => 
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+    fetchUsers();
+  }, [getAllUsers]);
+
+  // Filter users by search (no role filter since leaderboard doesn't have role)
+  const filteredUsers = users.filter(user => 
+    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Get loan count for user
-  const getLoanCount = (userId) => {
-    return loans.filter(l => l.userId === userId || l.oderId === userId).length;
-  };
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-64 mt-2 animate-pulse"></div>
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-16 bg-gray-200 rounded animate-pulse"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
-  // Get active loan count for user
-  const getActiveLoanCount = (userId) => {
-    return loans.filter(l => 
-      (l.userId === userId || l.oderId === userId) && 
-      (l.status === 'active' || l.status === 'overdue')
-    ).length;
-  };
+  if (error) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <Card className="p-8 text-center">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Coba Lagi
+          </button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -52,7 +88,7 @@ const UserList = () => {
 
       {/* Results Count */}
       <p className="text-sm text-gray-500 mb-4">
-        Menampilkan {filteredUsers.length} dari {regularUsers.length} user
+        Menampilkan {filteredUsers.length} dari {users.length} user
       </p>
 
       {/* Users Table */}
@@ -71,29 +107,21 @@ const UserList = () => {
                   XP
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                  Total Pinjaman
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                  Aktif
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                  Bergabung
+                  Status
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredUsers.map((user) => (
+              {filteredUsers.length > 0 ? filteredUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <img
-                        src={user.avatar}
-                        alt={user.name}
-                        className="w-10 h-10 rounded-full"
-                      />
+                      <div className="w-10 h-10 rounded-full bg-linear-to-br from-emerald-400 to-green-600 flex items-center justify-center text-white font-bold">
+                        {user.name?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
                       <div>
                         <p className="font-medium text-gray-900">{user.name}</p>
-                        <p className="text-sm text-gray-500 sm:hidden">{user.email}</p>
+                        <p className="text-xs text-gray-500 sm:hidden">{user.email}</p>
                       </div>
                     </div>
                   </td>
@@ -101,37 +129,28 @@ const UserList = () => {
                     {user.email}
                   </td>
                   <td className="px-4 py-4">
-                    <span className="font-bold text-emerald-600">{user.xp} XP</span>
+                    <span className="font-medium text-emerald-600">{user.xp || 0} XP</span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600 hidden md:table-cell">
-                    {getLoanCount(user.id)} buku
-                  </td>
-                  <td className="px-4 py-4 hidden lg:table-cell">
+                  <td className="px-4 py-4 hidden md:table-cell">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      getActiveLoanCount(user.id) > 0 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'bg-gray-100 text-gray-600'
+                      user.status === 'aktif' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-gray-100 text-gray-700'
                     }`}>
-                      {getActiveLoanCount(user.id)} buku
+                      {user.status || 'Aktif'}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm text-gray-600 hidden lg:table-cell">
-                    {formatDate(user.createdAt)}
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
+                    Tidak ada user ditemukan
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
-
-        {filteredUsers.length === 0 && (
-          <div className="text-center py-12">
-            <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <p className="text-gray-500">Tidak ada user ditemukan</p>
-          </div>
-        )}
       </Card>
     </div>
   );
