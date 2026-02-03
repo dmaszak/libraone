@@ -1,6 +1,7 @@
-// Mobile Sidebar Component (Sliding from left)
+// MobileSidebar Component (Sliding from left)
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import logoLibraOne from '../../assets/LogoLibraOne.png';
@@ -76,7 +77,7 @@ const MobileSidebar = () => {
 
   return (
     <>
-      {/* Hamburger Button */}
+      {/* Hamburger Button (Inside Navbar) */}
       <button
         onClick={() => setIsOpen(true)}
         className="p-2 text-gray-600 hover:text-gray-900 transition-colors"
@@ -86,89 +87,98 @@ const MobileSidebar = () => {
         </svg>
       </button>
 
-      {/* Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 transition-opacity"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <div
-        className={`fixed top-0 left-0 h-full w-72 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <img 
-              src={logoLibraOne} 
-              alt="LibraOne" 
-              className="h-10 w-auto"
+      {/* Portal to Body (To escape Navbar's fixed/transform context) */}
+      {createPortal(
+        <>
+          {/* Overlay */}
+          {isOpen && (
+            <div
+              className="fixed inset-0 bg-black/50 transition-opacity"
+              style={{ zIndex: 999 }}
+              onClick={() => setIsOpen(false)}
             />
-            <span className="text-xl font-bold text-emerald-600">LibraOne</span>
-          </div>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+          )}
 
-        {/* User Info */}
-        {user && (
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <img
-                src={user.avatar}
-                alt={user.name}
-                className="w-12 h-12 rounded-full object-cover"
-              />
-              <div>
-                <p className="font-medium text-gray-900">{user.name}</p>
-                <p className="text-sm text-gray-500">{user.email}</p>
+          {/* Sidebar Panel - Flexbox Layout */}
+          <div
+            className={`fixed top-0 left-0 h-full w-72 bg-white shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'
+              }`}
+            style={{ zIndex: 1000 }}
+          >
+            {/* Header */}
+            <div className="flex-none flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <img
+                  src={logoLibraOne}
+                  alt="LibraOne"
+                  className="h-10 w-auto"
+                />
+                <span className="text-xl font-bold text-emerald-600">LibraOne</span>
               </div>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scrollable Content (User Info + Nav) */}
+            <div className="flex-1 overflow-y-auto">
+              {/* User Info */}
+              {user && (
+                <div className="p-4 border-b border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={user.avatar}
+                      alt={user.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                    <div>
+                      <p className="font-medium text-gray-900">{user.name}</p>
+                      <p className="text-sm text-gray-500 truncate max-w-[160px]">{user.email}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Navigation */}
+              <nav className="p-4 space-y-1">
+                {menuItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setIsOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive(item.path)
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                  >
+                    {item.icon}
+                    <span className="font-medium">{item.title}</span>
+                  </Link>
+                ))}
+              </nav>
+            </div>
+
+            {/* Logout (Stays at bottom) */}
+            <div className="flex-none p-4 border-t border-gray-200 bg-white">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 px-4 py-3 w-full text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span className="font-medium">Logout</span>
+              </button>
             </div>
           </div>
-        )}
-
-        {/* Menu Items */}
-        <nav className="p-4 space-y-1">
-          {menuItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive(item.path)
-                  ? 'bg-emerald-50 text-emerald-600'
-                  : 'text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {item.icon}
-              <span className="font-medium">{item.title}</span>
-            </Link>
-          ))}
-        </nav>
-
-        {/* Logout */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
-      </div>
+        </>,
+        document.body
+      )}
     </>
   );
 };

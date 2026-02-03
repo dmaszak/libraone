@@ -6,7 +6,7 @@ import Card from '../../components/common/Card';
 
 const Leaderboard = () => {
   const { user, getLeaderboard, getMyRanking } = useAuth();
-  
+
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRanking, setMyRanking] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -103,8 +103,8 @@ const Leaderboard = () => {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
         <p className="text-red-500">{error}</p>
-        <button 
-          onClick={() => window.location.reload()} 
+        <button
+          onClick={() => window.location.reload()}
           className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
         >
           Coba Lagi
@@ -113,20 +113,103 @@ const Leaderboard = () => {
     );
   }
 
+  // Extract top 3 and rest
+  const top3 = leaderboard.slice(0, 3);
+  const restOfLeaderboard = leaderboard.slice(3);
+
+  // Podium config for each position
+  const podiumConfig = {
+    1: {
+      height: 'h-36 sm:h-44',
+      bgGradient: 'from-yellow-300 via-yellow-400 to-amber-500',
+      borderColor: 'border-yellow-400',
+      shadowColor: 'shadow-yellow-400/50',
+      badge: '🥇',
+      label: '1st',
+      order: 'order-2' // Center
+    },
+    2: {
+      height: 'h-28 sm:h-36',
+      bgGradient: 'from-gray-300 via-slate-400 to-gray-500',
+      borderColor: 'border-gray-400',
+      shadowColor: 'shadow-gray-400/50',
+      badge: '🥈',
+      label: '2nd',
+      order: 'order-1' // Left
+    },
+    3: {
+      height: 'h-24 sm:h-32',
+      bgGradient: 'from-amber-500 via-orange-500 to-amber-700',
+      borderColor: 'border-amber-600',
+      shadowColor: 'shadow-amber-500/50',
+      badge: '🥉',
+      label: '3rd',
+      order: 'order-3' // Right
+    }
+  };
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Leaderboard</h1>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">🏆 Leaderboard</h1>
         <p className="text-gray-600 mt-1">Peringkat pembaca berdasarkan XP</p>
       </div>
 
-      {/* User Rank Card */}
+      {/* Olympic Podium - Top 3 (MOVED ABOVE USER RANK) */}
+      {top3.length >= 3 && (
+        <div className="mb-10">
+          <h2 className="text-lg font-semibold text-gray-700 text-center mb-6">🎖️ Hall of Fame</h2>
+
+          <div className="flex justify-center items-end gap-2 sm:gap-4 px-2">
+            {top3.map((item, index) => {
+              const rank = item.rank || index + 1;
+              const config = podiumConfig[rank];
+              const isCurrentUser = item.email === user?.email;
+              const displayAvatar = isCurrentUser
+                ? user?.avatar
+                : (item.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=10B981&color=fff`);
+
+              return (
+                <div key={item.email || index} className={`flex flex-col items-center ${config.order} flex-1 max-w-[140px]`}>
+                  {/* Avatar (Clean - No Glow) */}
+                  <div className={`relative mb-2 ${rank === 1 ? 'animate-pulse' : ''}`}>
+                    <img
+                      src={displayAvatar}
+                      alt={item.name}
+                      className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full border-4 border-white object-cover shadow-sm"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=10B981&color=fff`;
+                      }}
+                    />
+                    {/* Badge Removed */}
+                  </div>
+
+                  {/* Name & XP */}
+                  <p className={`font-bold text-gray-800 text-center text-sm sm:text-base truncate w-full mt-3 ${isCurrentUser ? 'text-emerald-600' : ''}`}>
+                    {item.name}
+                    {isCurrentUser && <span className="block text-xs text-emerald-500">(Kamu)</span>}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-500 font-medium">{item.xp} XP</p>
+
+                  {/* Podium Block */}
+                  <div className={`w-full ${config.height} bg-gradient-to-t ${config.bgGradient} rounded-t-lg mt-3 flex items-center justify-center shadow-lg`}>
+                    <span className="text-white font-bold text-xl sm:text-2xl drop-shadow">{config.label}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* User Rank Card (MOVED BELOW PODIUM) */}
       {myRanking && (
-        <Card className="bg-linear-to-r from-emerald-500 to-emerald-600 text-white mb-6">
+        <Card className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <img 
+              <img
                 src={user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(myRanking.name)}&background=10B981&color=fff`}
                 alt={myRanking.name}
                 className="w-14 h-14 rounded-full border-2 border-white object-cover"
@@ -161,43 +244,56 @@ const Leaderboard = () => {
         </div>
       </Card>
 
-      {/* Leaderboard List */}
-      <div className="space-y-3">
-        {leaderboard.map((item, index) => {
-          const isCurrentUser = item.email === user?.email;
-          const rank = item.rank || index + 1;
-          
-          return (
-            <Card 
-              key={item.email || index} 
-              className={`${getRankBg(rank, isCurrentUser)} ${isCurrentUser ? 'ring-2 ring-emerald-500' : ''}`}
-            >
-              <div className="flex items-center space-x-4">
-                {getRankIcon(rank)}
-                <img 
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=10B981&color=fff`}
-                  alt={item.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 truncate">
-                    {item.name}
-                    {isCurrentUser && (
-                      <span className="ml-2 text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
-                        Kamu
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-sm text-gray-500 truncate">{item.email}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-gray-900">{item.xp} XP</p>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      {/* Leaderboard List (Rank 4+) */}
+      {restOfLeaderboard.length > 0 && (
+        <>
+          <h2 className="text-lg font-semibold text-gray-700 mb-3">📋 Peringkat Lainnya</h2>
+          <div className="space-y-3">
+            {restOfLeaderboard.map((item, index) => {
+              const isCurrentUser = item.email === user?.email;
+              const rank = item.rank || index + 4; // Starts from rank 4
+
+              const displayAvatar = isCurrentUser
+                ? user?.avatar
+                : (item.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=10B981&color=fff`);
+
+              return (
+                <Card
+                  key={item.email || index}
+                  className={`${getRankBg(rank, isCurrentUser)} ${isCurrentUser ? 'ring-2 ring-emerald-500' : ''}`}
+                >
+                  <div className="flex items-center space-x-4">
+                    {getRankIcon(rank)}
+                    <img
+                      src={displayAvatar}
+                      alt={item.name}
+                      className="w-10 h-10 rounded-full object-cover"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=10B981&color=fff`;
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {item.name}
+                        {isCurrentUser && (
+                          <span className="ml-2 text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                            Kamu
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-sm text-gray-500 truncate">{item.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-gray-900">{item.xp} XP</p>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {leaderboard.length === 0 && (
         <div className="text-center py-12">

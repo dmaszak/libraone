@@ -11,11 +11,11 @@ import { CATEGORIES } from '../../utils/constants';
 
 const ManageBooks = () => {
   const { getBooks, addBook, updateBook, deleteBook } = useAuth();
-  
+
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [showModal, setShowModal] = useState(false);
@@ -72,8 +72,8 @@ const ManageBooks = () => {
   // Filter books
   const filteredBooks = books.filter(book => {
     const matchesSearch = book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         book.author.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'Semua' || book.category === selectedCategory;
+      book.author.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'Semua' || (book.category && book.category.toLowerCase() === selectedCategory.toLowerCase());
     return matchesSearch && matchesCategory;
   });
 
@@ -180,8 +180,8 @@ const ManageBooks = () => {
 
     try {
       if (editingBook) {
-        // Update book
-        const result = await updateBook(editingBook.id, bookData, coverFile);
+        // Update book - use idBuku (string) because backend expects string ID in URL
+        const result = await updateBook(editingBook.idBuku, bookData, coverFile);
         if (result.success) {
           setMessage({ type: 'success', text: 'Buku berhasil diperbarui!' });
           setTimeout(async () => {
@@ -277,6 +277,7 @@ const ManageBooks = () => {
       </div>
 
       {/* Search and Filter */}
+      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <SearchBar
           value={searchQuery}
@@ -289,7 +290,7 @@ const ManageBooks = () => {
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
         >
-          {CATEGORIES.map((category) => (
+          {['Semua', ...new Set([...CATEGORIES.filter(c => c !== 'Semua'), ...books.map(b => b.category ? b.category.charAt(0).toUpperCase() + b.category.slice(1) : '')].filter(Boolean))].map((category) => (
             <option key={category} value={category}>
               {category}
             </option>
@@ -465,11 +466,11 @@ const ManageBooks = () => {
             value={formData.pages}
             onChange={handleChange}
           />
-          
+
           {/* Cover Upload Section */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Cover Buku</label>
-            
+
             {/* Preview */}
             {coverPreview && (
               <div className="relative mb-3 inline-block">
@@ -493,7 +494,7 @@ const ManageBooks = () => {
                 </button>
               </div>
             )}
-            
+
             {/* File Input */}
             <div className="flex items-center gap-3">
               <label className="flex-1 cursor-pointer">
@@ -531,9 +532,8 @@ const ManageBooks = () => {
           </div>
 
           {message.text && (
-            <div className={`p-3 rounded-lg ${
-              message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-            }`}>
+            <div className={`p-3 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
               {message.text}
             </div>
           )}

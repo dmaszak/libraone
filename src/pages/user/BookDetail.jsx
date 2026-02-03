@@ -12,8 +12,8 @@ import { LOAN_DURATION_DAYS } from '../../utils/constants';
 const BookDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getBookById, borrowBook, getActiveLoans } = useAuth();
-  
+  const { getBookById, borrowBook, getActiveLoans, getBooks } = useAuth();
+
   const [book, setBook] = useState(null);
   const [activeLoans, setActiveLoans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,19 +21,49 @@ const BookDetail = () => {
   const [showModal, setShowModal] = useState(false);
   const [borrowLoading, setBorrowLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [numericId, setNumericId] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
-        
-        const [bookData, loansData] = await Promise.all([
+
+        // Fetch book detail AND all books to find the numeric ID and missing details
+        // API detail endpoint is missing id, publisher, year, etc.
+        const [bookData, loansData, allBooks] = await Promise.all([
           getBookById(id),
-          getActiveLoans()
+          getActiveLoans(),
+          getBooks()
         ]);
-        
-        setBook(bookData);
+
+        let finalBookData = bookData;
+        let realId = null;
+
+        // Try to find the book in allBooks list to get the numeric ID and missing info
+        if (allBooks && allBooks.length > 0) {
+          // Try to match by idBuku string or title
+          const foundBook = allBooks.find(b =>
+            b.idBuku === bookData.idBuku ||
+            b.title === bookData.title
+          );
+
+          if (foundBook) {
+            console.log('Found matching book in list:', foundBook);
+            realId = foundBook.id;
+            // Merge missing data from list to detail
+            finalBookData = {
+              ...bookData,
+              id: foundBook.id, // Ensure numeric ID is set
+              publisher: bookData.publisher !== '-' ? bookData.publisher : foundBook.publisher,
+              year: bookData.year || foundBook.year,
+              pages: bookData.pages || foundBook.pages,
+            };
+          }
+        }
+
+        setNumericId(realId);
+        setBook(finalBookData);
         setActiveLoans(loansData || []);
       } catch (err) {
         console.error('Error fetching book:', err);
@@ -44,9 +74,12 @@ const BookDetail = () => {
     };
 
     fetchData();
-  }, [id, getBookById, getActiveLoans]);
+  }, [id, getBookById, getActiveLoans, getBooks]);
 
-  const alreadyBorrowed = activeLoans.some(loan => loan.bookId === parseInt(id));
+  const alreadyBorrowed = activeLoans.some(loan =>
+    (numericId && loan.bookId === numericId) ||
+    (book && loan.title === book.title) // Fallback check by title if ID mismatch
+  );
 
   const today = new Date().toISOString().split('T')[0];
   const dueDate = calculateDueDate(today);
@@ -56,9 +89,18 @@ const BookDetail = () => {
     setMessage({ type: '', text: '' });
 
     try {
-      // Use idBuku (string like 'bis01') for borrowing, not numeric id
-      const result = await borrowBook(book.idBuku);
-      
+      // Try using idBuku (string) with the multi-key payload
+      // Previous 400 might have been due to wrong key, not wrong value type
+      const idToUse = book.idBuku;
+
+      console.log('Borrowing book with ID:', idToUse);
+
+      if (!idToUse) {
+        throw new Error('ID Buku (integer) tidak ditemukan. API Error.');
+      }
+
+      const result = await borrowBook(idToUse);
+
       if (result.success) {
         setMessage({ type: 'success', text: result.message || 'Buku berhasil dipinjam!' });
         setTimeout(() => {
@@ -69,7 +111,8 @@ const BookDetail = () => {
         setMessage({ type: 'error', text: result.message });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Gagal meminjam buku' });
+      console.error('Borrow error:', err);
+      setMessage({ type: 'error', text: err.message || 'Gagal meminjam buku' });
     } finally {
       setBorrowLoading(false);
     }
@@ -145,7 +188,7 @@ const BookDetail = () => {
           <span className="inline-block bg-emerald-100 text-emerald-700 text-sm font-medium px-3 py-1 rounded-full mb-3">
             {book.category}
           </span>
-          
+
           <h1 className="text-3xl font-bold text-gray-900 mb-2">{book.title}</h1>
           <p className="text-lg text-gray-600 mb-6">oleh {book.author}</p>
 
@@ -217,10 +260,10 @@ const BookDetail = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          
+
           <h3 className="text-xl font-bold text-gray-900 mb-2">Konfirmasi Peminjaman</h3>
           <p className="text-gray-600 mb-4">Kamu akan meminjam buku:</p>
-          
+
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
             <p className="font-semibold text-gray-900">{book.title}</p>
             <p className="text-sm text-gray-500">{book.author}</p>
@@ -231,9 +274,8 @@ const BookDetail = () => {
           </div>
 
           {message.text && (
-            <div className={`p-3 rounded-lg mb-4 ${
-              message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-            }`}>
+            <div className={`p-3 rounded-lg mb-4 ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
               {message.text}
             </div>
           )}

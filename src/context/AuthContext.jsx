@@ -23,19 +23,38 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       const token = localStorage.getItem('token');
       const savedUser = localStorage.getItem('user');
-      
+
       if (token && savedUser) {
         try {
           // Verify token masih valid dengan mengambil profile
           const profile = await authAPI.getProfile();
+          const savedData = JSON.parse(savedUser);
+
+          // Debug log
+          console.log('initAuth - Profile from API:', profile);
+          console.log('initAuth - Saved user from localStorage:', savedData);
+
+          // Prefer API data, but fall back to saved data if API returns null
+          const userName = profile.nama || profile.name || savedData.name || 'User';
+
+          // Fix avatar logic: Use backend photo if available, otherwise generate default
+          const backendPhoto = profile.foto || profile.poto || savedData.foto || savedData.poto;
+          const avatarUrl = backendPhoto
+            ? backendPhoto
+            : `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=10B981&color=fff`;
+
           const userData = {
-            ...JSON.parse(savedUser),
+            ...savedData,
             ...profile,
-            // Map field dari API ke format frontend
-            name: profile.nama,
+            // Explicitly set name to handle null from API
+            name: userName,
             xp: profile.xp || profile.poin || 0,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.nama)}&background=10B981&color=fff`
+            avatar: avatarUrl,
+            foto: backendPhoto // Keep raw photo url reference
           };
+
+          // Update localStorage with fresh data
+          localStorage.setItem('user', JSON.stringify(userData));
           setUser(userData);
         } catch (err) {
           // Token invalid, clear storage
@@ -55,23 +74,46 @@ export const AuthProvider = ({ children }) => {
     try {
       setError(null);
       const response = await authAPI.login(email, password);
-      
-      // Simpan token
+
+      // Simpan token sementara
       localStorage.setItem('token', response.token);
-      
-      // Map user data dari API ke format frontend
-      const userData = {
-        id: response.user.id,
-        name: response.user.name,
-        email: response.user.email,
-        role: response.user.role === 'anggota' ? 'user' : response.user.role,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(response.user.name)}&background=10B981&color=fff`
-      };
-      
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-      
-      return { success: true, user: userData };
+
+      // Fetch full profile immediately because login response is incomplete (missing photo)
+      // We need to use the token we just saved
+      try {
+        const fullProfile = await authAPI.getProfile();
+        console.log('Post-login profile fetch:', fullProfile);
+
+        // Map user data from FULL profile
+        const userData = {
+          id: response.user.id,
+          name: fullProfile.nama || fullProfile.name || response.user.name || 'User',
+          email: response.user.email,
+          role: response.user.role === 'anggota' ? 'user' : response.user.role,
+          // Prioritize photo from full profile
+          avatar: fullProfile.foto || fullProfile.poto || `https://ui-avatars.com/api/?name=${encodeURIComponent(response.user.name || 'User')}&background=10B981&color=fff`,
+          foto: fullProfile.foto || fullProfile.poto // Store raw backend photo
+        };
+
+        localStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+
+        return { success: true, user: userData };
+      } catch (profileErr) {
+        console.error('Failed to fetch full profile after login:', profileErr);
+        // Fallback to basic login data if profile fetch fails
+        const basicUser = {
+          id: response.user.id,
+          name: response.user.name || 'User',
+          email: response.user.email,
+          role: response.user.role === 'anggota' ? 'user' : response.user.role,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(response.user.name || 'User')}&background=10B981&color=fff`
+        };
+        localStorage.setItem('user', JSON.stringify(basicUser));
+        setUser(basicUser);
+        return { success: true, user: basicUser };
+      }
+
     } catch (err) {
       const message = err.response?.data?.message || 'Email atau password salah';
       setError(message);
@@ -103,9 +145,10 @@ export const AuthProvider = ({ children }) => {
   const getProfile = async () => {
     try {
       const profile = await authAPI.getProfile();
+      console.log('Raw Profile Response:', profile);
       return {
         ...profile,
-        name: profile.nama,
+        name: profile.nama || profile.name, // Handle both cases safely
         joinedAt: profile.bergabung_sejak,
         status: profile.status,
         xp: profile.xp,
@@ -120,7 +163,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ==================== BOOKS ====================
-  
+
   const getBooks = async () => {
     try {
       const books = await booksAPI.getAll();
@@ -151,14 +194,15 @@ export const AuthProvider = ({ children }) => {
   const getBookById = async (id) => {
     try {
       const book = await booksAPI.getById(id);
+      console.log('Book detail API response:', book);
       return {
-        id: book.id,
+        id: book.id || book.id_buku, // Fallback to id_buku if id is not available
         idBuku: book.id_buku,
         title: book.judul,
         author: book.pengarang,
-        publisher: book.penerbit,
+        publisher: book.penerbit || '-',
         year: book.tahun_terbit ? new Date(book.tahun_terbit).getFullYear() : null,
-        pages: book.jumlah_halaman,
+        pages: book.jumlah_halaman || null,
         category: book.kategori,
         cover: book.cover
           ? book.cover.startsWith('http')
@@ -183,7 +227,11 @@ export const AuthProvider = ({ children }) => {
         idBuku: book.id_buku,
         title: book.judul,
         author: book.pengarang,
-        cover: book.cover ? `https://backend-libraone.vercel.app/uploads/${book.Cover || book.cover}` : null,
+        cover: book.cover || book.Cover
+          ? (book.cover || book.Cover).startsWith('http')
+            ? (book.cover || book.Cover)
+            : `https://backend-libraone.vercel.app/uploads/${book.cover || book.Cover}`
+          : null,
         borrowed: book.total_dipinjam
       }));
     } catch (err) {
@@ -231,12 +279,13 @@ export const AuthProvider = ({ children }) => {
   const borrowBook = async (bukuId) => {
     try {
       const response = await loansAPI.borrow(bukuId);
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: response.message,
-        xpEarned: response.poin_didapat 
+        xpEarned: response.poin_didapat
       };
     } catch (err) {
+      console.error('Borrow API Error Details:', err.response?.data);
       return { success: false, message: err.response?.data?.message || 'Gagal meminjam buku' };
     }
   };
@@ -260,15 +309,29 @@ export const AuthProvider = ({ children }) => {
 
   const getActiveLoans = async () => {
     try {
-      const loans = await loansAPI.getActiveLoans();
-      return loans.map(loan => ({
-        id: loan.id,
-        title: loan.judul,
-        author: loan.pengarang,
-        borrowDate: loan.tanggal_dipinjam,
-        dueDate: loan.tanggal_jatuh_tempo,
-        extensionCount: loan.diperpanjang || 0
-      }));
+      const [loans, books] = await Promise.all([
+        loansAPI.getActiveLoans(),
+        booksAPI.getAll()
+      ]);
+
+      const bookMap = new Map(books.map(b => [b.judul, b.cover]));
+
+      return loans.map(loan => {
+        const coverPath = bookMap.get(loan.judul) || null;
+        const fullCoverUrl = coverPath
+          ? (coverPath.startsWith('http') ? coverPath : `https://backend-libraone.vercel.app/uploads/${coverPath}`)
+          : null;
+
+        return {
+          id: loan.id,
+          title: loan.judul,
+          author: loan.pengarang,
+          cover: fullCoverUrl,
+          borrowDate: loan.tanggal_dipinjam,
+          dueDate: loan.tanggal_jatuh_tempo,
+          extensionCount: loan.diperpanjang || 0
+        };
+      });
     } catch (err) {
       console.error('Get active loans error:', err);
       throw err;
@@ -277,15 +340,29 @@ export const AuthProvider = ({ children }) => {
 
   const getLoanHistory = async () => {
     try {
-      const loans = await loansAPI.getHistory();
-      return loans.map(loan => ({
-        id: loan.id,
-        title: loan.judul,
-        author: loan.pengarang,
-        borrowDate: loan.tanggal_dipinjam,
-        dueDate: loan.tanggal_jatuh_tempo,
-        extensionCount: loan.diperpanjang || 0
-      }));
+      const [loans, books] = await Promise.all([
+        loansAPI.getHistory(),
+        booksAPI.getAll()
+      ]);
+
+      const bookMap = new Map(books.map(b => [b.judul, b.cover]));
+
+      return loans.map(loan => {
+        const coverPath = bookMap.get(loan.judul) || null;
+        const fullCoverUrl = coverPath
+          ? (coverPath.startsWith('http') ? coverPath : `https://backend-libraone.vercel.app/uploads/${coverPath}`)
+          : null;
+
+        return {
+          id: loan.id,
+          title: loan.judul,
+          author: loan.pengarang,
+          cover: fullCoverUrl,
+          borrowDate: loan.tanggal_dipinjam,
+          dueDate: loan.tanggal_jatuh_tempo,
+          extensionCount: loan.diperpanjang || 0
+        };
+      });
     } catch (err) {
       console.error('Get loan history error:', err);
       throw err;
@@ -295,10 +372,10 @@ export const AuthProvider = ({ children }) => {
   const returnBook = async (loanId) => {
     try {
       const response = await loansAPI.returnBook(loanId);
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: response.message,
-        fine: response.denda 
+        fine: response.denda
       };
     } catch (err) {
       return { success: false, message: err.response?.data?.message || 'Gagal mengembalikan buku' };
@@ -356,13 +433,15 @@ export const AuthProvider = ({ children }) => {
   const getLeaderboard = async () => {
     try {
       const response = await leaderboardAPI.getAll();
+      console.log('Raw Leaderboard Response:', response);
       // Backend returns { message, data: [...] }
       const leaderboard = response.data || response || [];
       return Array.isArray(leaderboard) ? leaderboard.map(item => ({
         rank: item.rank,
-        name: item.name,
+        name: item.name || item.nama || 'User',
         email: item.email,
-        xp: item.poin
+        xp: item.poin,
+        avatar: item.foto || item.poto || item.avatar || null
       })) : [];
     } catch (err) {
       console.error('Get leaderboard error:', err);
@@ -376,7 +455,7 @@ export const AuthProvider = ({ children }) => {
       // Backend may return { message, data } or direct object
       const ranking = response.data || response;
       return {
-        name: ranking?.name || '',
+        name: ranking?.name || ranking?.nama || '',
         xp: ranking?.poin || 0,
         rank: ranking?.ranking || ranking?.rank || 0
       };
@@ -404,15 +483,47 @@ export const AuthProvider = ({ children }) => {
   const getMyFines = async () => {
     try {
       const response = await finesAPI.getMyFines();
+      console.log('Raw fines API response:', response);
+
       // Response bisa berupa array atau object dengan data
-      const fines = response.data || response || [];
-      const total = Array.isArray(fines) 
-        ? fines.reduce((sum, fine) => sum + (fine.jumlah || fine.total_denda || 0), 0)
-        : 0;
-      return { 
-        total, 
-        fines: Array.isArray(fines) ? fines : [],
-        count: Array.isArray(fines) ? fines.length : 0
+      const allFines = response.data || response || [];
+
+      // Filter out paid fines (status: lunas/paid/dibayar)
+      const unpaidFines = Array.isArray(allFines)
+        ? await Promise.all(allFines.filter(fine => {
+          console.log('Fine object:', JSON.stringify(fine, null, 2));
+          const status = (fine.status || fine.status_denda || '').toLowerCase();
+          const isPaid = status === 'lunas' || status === 'paid' || status === 'dibayar' || status === 'sudah bayar';
+          console.log('Fine status:', status, 'isPaid:', isPaid);
+          return !isPaid;
+        }).map(async (fine) => {
+          // Find corresponding loan to get the correct ID for payment
+          try {
+            const history = await loansAPI.getHistory();
+            const loan = history.find(l =>
+              (l.judul === fine.judul || l.book_title === fine.judul) &&
+              (new Date(l.tanggal_kembali).toDateString() === new Date(fine.tanggal_kembali).toDateString())
+            );
+            if (loan) {
+              console.log('Found matching loan for fine:', loan);
+              return { ...fine, paymentId: loan.id || loan.peminjaman_id };
+            }
+          } catch (e) {
+            console.error('Error matching fine to loan:', e);
+          }
+          return { ...fine, paymentId: fine.denda_id || fine.id };
+        }))
+        : [];
+
+
+      const total = unpaidFines.reduce((sum, fine) => sum + (fine.jumlah || fine.total_denda || 0), 0);
+
+      console.log('Filtered unpaid fines:', unpaidFines, 'Total:', total);
+
+      return {
+        total,
+        fines: unpaidFines,
+        count: unpaidFines.length
       };
     } catch (err) {
       console.error('Get my fines error:', err);
@@ -433,13 +544,22 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (name, email) => {
     try {
+      console.log('updateProfile - Sending request with:', { name, email });
+      if (!name || !email) {
+        throw new Error("Name and Email are required");
+      }
       const response = await authAPI.updateProfile(name, email);
+      console.log('updateProfile - Response from API:', response);
+
       // Update local user data
       const updatedUser = { ...user, name, email };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      console.log('updateProfile - Updated localStorage with:', updatedUser);
+
       return { success: true, message: response.message };
     } catch (err) {
+      console.error('updateProfile - Error:', err.response?.data || err.message);
       return { success: false, message: err.response?.data?.message || 'Gagal update profile' };
     }
   };
@@ -453,16 +573,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const updatePhoto = async (photo) => {
+  const updatePhoto = async (file) => {
     try {
-      const response = await authAPI.updatePhoto(photo);
+      const response = await authAPI.updatePhoto(file);
+      // api.js returns { ...data, photoUrl }
+      const newPhotoUrl = response.photoUrl;
+
       // Update local user data
-      const updatedUser = { ...user, avatar: response.poto };
+      // Backend uses 'poto' or 'foto', frontend uses 'avatar' or 'foto'
+      const updatedUser = {
+        ...user,
+        avatar: newPhotoUrl,
+        foto: newPhotoUrl
+      };
+
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      return { success: true, message: response.message, photo: response.poto };
+      console.log('updatePhoto - Success, new URL:', newPhotoUrl);
+
+      return { success: true, message: 'Foto berhasil diperbarui', photo: newPhotoUrl };
     } catch (err) {
-      return { success: false, message: err.response?.data?.message || 'Gagal update foto' };
+      console.error('updatePhoto - Error:', err);
+      return { success: false, message: err.message || 'Gagal update foto' };
     }
   };
 

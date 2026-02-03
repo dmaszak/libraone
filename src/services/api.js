@@ -2,8 +2,8 @@
 import axios from 'axios';
 
 // Base URL - use relative path for development (Vite proxy), full URL for production
-const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://backend-libraone.vercel.app/api' 
+const API_BASE_URL = import.meta.env.PROD
+  ? 'https://backend-libraone.vercel.app/api'
   : '/api';
 
 // Cloudinary Configuration
@@ -16,17 +16,17 @@ export const uploadToCloudinary = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  
+
   try {
     const response = await fetch(CLOUDINARY_UPLOAD_URL, {
       method: 'POST',
       body: formData,
     });
-    
+
     if (!response.ok) {
       throw new Error('Upload to Cloudinary failed');
     }
-    
+
     const data = await response.json();
     console.log('Cloudinary upload success:', data.secure_url);
     return data.secure_url; // Return the URL of uploaded image
@@ -76,8 +76,8 @@ api.interceptors.response.use(
 
 export const authAPI = {
   // Register user baru
-  register: async (nama, email, password) => {
-    const response = await api.post('/auth/register', { nama, email, password });
+  register: async (name, email, password) => {
+    const response = await api.post('/auth/register', { name, email, password });
     return response.data;
   },
 
@@ -95,20 +95,30 @@ export const authAPI = {
 
   // Update profile
   updateProfile: async (name, email) => {
+    // Backend expects 'name'
     const response = await api.put('/users/profile-update', { name, email });
     return response.data;
   },
 
   // Change password
   changePassword: async (oldPassword, newPassword) => {
-    const response = await api.put('/users/change-password', { oldPassword, newPassword });
+    const response = await api.put('/users/cange-password', { oldPassword, newPassword });
     return response.data;
   },
 
   // Update profile photo
-  updatePhoto: async (photo) => {
-    const response = await api.put('/users/profile/poto', { poto: photo });
-    return response.data;
+  updatePhoto: async (file) => {
+    try {
+      console.log('Uploading profile photo to Cloudinary...');
+      const photoUrl = await uploadToCloudinary(file);
+      console.log('Photo uploaded, updating backend with URL:', photoUrl);
+
+      const response = await api.put('/users/profile/poto', { poto: photoUrl });
+      return { ...response.data, photoUrl }; // Return URL so context can use it
+    } catch (error) {
+      console.error('Update photo failed:', error);
+      throw error;
+    }
   },
 };
 
@@ -136,7 +146,7 @@ export const booksAPI = {
   // Add new book (admin) - upload cover to Cloudinary first
   create: async (bookData, coverFile = null) => {
     let coverUrl = bookData.cover || 'default.jpg';
-    
+
     // If there's a cover file, upload to Cloudinary first
     if (coverFile) {
       try {
@@ -148,7 +158,7 @@ export const booksAPI = {
         throw new Error('Gagal upload cover buku. Silakan coba lagi.');
       }
     }
-    
+
     // Send book data with Cloudinary URL to backend
     const payload = {
       id_buku: String(bookData.id_buku),
@@ -161,7 +171,7 @@ export const booksAPI = {
       buku_deskripsi: String(bookData.buku_deskripsi || '-'),
       jumlah_halaman: parseInt(bookData.jumlah_halaman) || 100
     };
-    
+
     console.log('Creating book with payload:', payload);
     const response = await api.post('/books/tambah_buku', payload);
     return response.data;
@@ -170,7 +180,7 @@ export const booksAPI = {
   // Update book (admin) - upload cover to Cloudinary first
   update: async (id, bookData, coverFile = null) => {
     let coverUrl = bookData.cover;
-    
+
     // If there's a new cover file, upload to Cloudinary first
     if (coverFile) {
       try {
@@ -182,7 +192,7 @@ export const booksAPI = {
         throw new Error('Gagal upload cover buku. Silakan coba lagi.');
       }
     }
-    
+
     // Send updated book data with Cloudinary URL to backend
     const payload = { ...bookData, cover: coverUrl };
     const response = await api.put(`/books/${id}`, payload);
@@ -201,7 +211,15 @@ export const booksAPI = {
 export const loansAPI = {
   // Pinjam buku
   borrow: async (bukuId) => {
-    const response = await api.post('/peminjaman', { buku_id: bukuId });
+    // Send multiple variations to hit the correct validation key
+    const payload = {
+      buku_id: bukuId,
+      id_buku: bukuId,
+      book_id: bukuId,
+      bukuId: bukuId
+    };
+    console.log('Sending borrow payload:', payload);
+    const response = await api.post('/peminjaman', payload);
     return response.data;
   },
 
@@ -291,7 +309,7 @@ export const finesAPI = {
 
   // Pay fine
   pay: async (id) => {
-    const response = await api.get(`/denda/${id}/bayar`);
+    const response = await api.put(`/denda/${id}/bayar`);
     return response.data;
   },
 };
@@ -305,22 +323,69 @@ export const adminAPI = {
     return response.data;
   },
 
-  // Get all users (admin) - uses leaderboard endpoint
+  // Get all users (admin)
   getAllUsers: async () => {
-    const response = await api.get('/leaderboard');
-    // Response format: { message, data: [...users] }
-    return response.data.data || response.data;
+    const response = await api.get('/admin/users');
+    return response.data;
   },
 
-  // Get all loans (admin)
-  getAllLoans: async () => {
-    const response = await api.get('/peminjaman');
+  // Get user detail (admin)
+  getUserDetail: async (id) => {
+    const response = await api.get(`/admin/users/${id}`);
+    return response.data;
+  },
+
+  // Delete user (admin)
+  deleteUser: async (id) => {
+    const response = await api.delete(`/admin/users/${id}`);
+    return response.data;
+  },
+
+  // Get all active loans (admin)
+  getActiveLoans: async () => {
+    const response = await api.get('/admin/peminjaman/aktif');
     return response.data;
   },
 
   // Get loan history / returns (admin)
   getAllReturns: async () => {
-    const response = await api.get('/peminjaman/riwayat');
+    const response = await api.get('/admin/peminjaman/riwayat');
+    return response.data;
+  },
+
+  // Get all loans (admin) - legacy, uses aktif endpoint
+  getAllLoans: async () => {
+    const response = await api.get('/admin/peminjaman/aktif');
+    return response.data;
+  },
+
+  // Get on-time returns (admin)
+  getOnTimeReturns: async () => {
+    const response = await api.get('/admin/peminjaman/tepat-waktu');
+    return response.data;
+  },
+
+  // Get late returns (admin)
+  getLateReturns: async () => {
+    const response = await api.get('/admin/peminjaman/terlambat');
+    return response.data;
+  },
+
+  // Get fine summary per user (admin)
+  getDendaSummary: async () => {
+    const response = await api.get('/admin/denda/summary');
+    return response.data;
+  },
+
+  // Get all paid fines (admin)
+  getPaidDenda: async () => {
+    const response = await api.get('/admin/denda/dibayar');
+    return response.data;
+  },
+
+  // Get all fines - paid and unpaid (admin)
+  getAllDenda: async () => {
+    const response = await api.get('/admin/denda');
     return response.data;
   },
 };

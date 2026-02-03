@@ -41,8 +41,8 @@ const BookList = () => {
   // Filter books
   const filteredBooks = books.filter(book => {
     const matchesSearch = book.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         book.author?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'Semua' || book.category === selectedCategory;
+      book.author?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'Semua' || (book.category && book.category.toLowerCase() === selectedCategory.toLowerCase());
     return matchesSearch && matchesCategory;
   });
 
@@ -66,8 +66,8 @@ const BookList = () => {
     return (
       <div className="max-w-6xl mx-auto text-center py-12">
         <p className="text-red-500">{error}</p>
-        <button 
-          onClick={() => window.location.reload()} 
+        <button
+          onClick={() => window.location.reload()}
           className="mt-4 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
         >
           Coba Lagi
@@ -99,7 +99,7 @@ const BookList = () => {
                 <div className="w-40 group">
                   <div className="relative overflow-hidden rounded-lg shadow-md">
                     <img
-                      src={book.cover || 'https://via.placeholder.com/160x224?text=No+Cover'}
+                      src={book.cover || 'https://placehold.co/160x224?text=No+Cover'}
                       alt={book.title}
                       className="w-40 h-56 object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -150,9 +150,10 @@ const BookList = () => {
               <Card hover padding="sm" className="h-full">
                 <div className="relative">
                   <img
-                    src={book.cover || 'https://via.placeholder.com/160x192?text=No+Cover'}
+                    src={book.cover || 'https://placehold.co/160x224?text=No+Cover'}
                     alt={book.title}
                     className="w-full h-48 object-cover rounded-lg"
+                    onError={(e) => { e.target.src = 'https://placehold.co/160x224?text=No+Cover'; }}
                   />
                   {book.status === 'dipinjam' && (
                     <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">

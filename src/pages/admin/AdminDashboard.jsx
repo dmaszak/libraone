@@ -3,15 +3,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { adminAPI } from '../../services/api';
 import Card from '../../components/common/Card';
 import { formatCurrency } from '../../utils/helpers';
 
 const AdminDashboard = () => {
-  const { getBooks, getPopularBooks, getLeaderboard, getFines, getAdminDashboard } = useAuth();
-  
+  const { getBooks, getPopularBooks, getLeaderboard, getAdminDashboard } = useAuth();
+
   const [stats, setStats] = useState({
     totalBooks: 0,
-    totalFines: 0
+    totalFines: 0,
+    unpaidFines: 0
   });
   const [popularBooks, setPopularBooks] = useState([]);
   const [topUsers, setTopUsers] = useState([]);
@@ -25,22 +27,27 @@ const AdminDashboard = () => {
         setLoading(true);
         setError(null);
 
-        const [books, popular, leaderboard, fines, dashboard] = await Promise.all([
+        const [books, popular, leaderboard, dashboard, allDenda] = await Promise.all([
           getBooks(),
           getPopularBooks(),
           getLeaderboard(),
-          getFines(),
-          getAdminDashboard()
+          getAdminDashboard(),
+          adminAPI.getAllDenda().catch(() => ({ data: [] }))
         ]);
 
-        // Calculate stats from available data
-        const totalFines = Array.isArray(fines) 
-          ? fines.reduce((sum, f) => sum + (f.totalFine || 0), 0) 
-          : 0;
+        // Calculate fines from getAllDenda
+        const dendaList = allDenda?.data || allDenda || [];
+        const finesArray = Array.isArray(dendaList) ? dendaList : [];
+
+        const totalFines = finesArray.reduce((sum, f) => sum + (f.jumlah || f.total_denda || 0), 0);
+        const unpaidFines = finesArray
+          .filter(f => !f.status || f.status === 'belum_dibayar' || f.status === 'unpaid' || f.status === 'aktif')
+          .reduce((sum, f) => sum + (f.jumlah || f.total_denda || 0), 0);
 
         setStats({
           totalBooks: Array.isArray(books) ? books.length : 0,
-          totalFines: totalFines
+          totalFines: totalFines,
+          unpaidFines: unpaidFines
         });
 
         setPopularBooks(Array.isArray(popular) ? popular.slice(0, 5) : []);
@@ -96,7 +103,7 @@ const AdminDashboard = () => {
           <div className="h-8 bg-gray-200 rounded w-48 animate-pulse"></div>
           <div className="h-4 bg-gray-200 rounded w-72 mt-2 animate-pulse"></div>
         </div>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
           {[1, 2].map(i => (
             <div key={i} className="bg-gray-200 rounded-xl h-28 animate-pulse"></div>
@@ -111,8 +118,8 @@ const AdminDashboard = () => {
       <div className="max-w-6xl mx-auto">
         <Card className="p-8 text-center">
           <p className="text-red-500 mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
           >
             Coba Lagi
@@ -182,12 +189,11 @@ const AdminDashboard = () => {
           <div className="space-y-3">
             {popularBooks.length > 0 ? popularBooks.map((book, index) => (
               <div key={book.idBuku || book.id_buku || index} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
-                  index === 0 ? 'bg-yellow-100 text-yellow-600' :
-                  index === 1 ? 'bg-gray-100 text-gray-600' :
-                  index === 2 ? 'bg-amber-100 text-amber-600' :
-                  'bg-gray-50 text-gray-500'
-                }`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-600' :
+                    index === 1 ? 'bg-gray-100 text-gray-600' :
+                      index === 2 ? 'bg-amber-100 text-amber-600' :
+                        'bg-gray-50 text-gray-500'
+                  }`}>
                   {index + 1}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -213,12 +219,11 @@ const AdminDashboard = () => {
           <div className="space-y-3">
             {topUsers.length > 0 ? topUsers.map((user, index) => (
               <div key={user.email || index} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${
-                  index === 0 ? 'bg-yellow-100 text-yellow-600' :
-                  index === 1 ? 'bg-gray-100 text-gray-600' :
-                  index === 2 ? 'bg-amber-100 text-amber-600' :
-                  'bg-gray-50 text-gray-500'
-                }`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold ${index === 0 ? 'bg-yellow-100 text-yellow-600' :
+                    index === 1 ? 'bg-gray-100 text-gray-600' :
+                      index === 2 ? 'bg-amber-100 text-amber-600' :
+                        'bg-gray-50 text-gray-500'
+                  }`}>
                   {index + 1}
                 </span>
                 <div className="flex-1 min-w-0">
