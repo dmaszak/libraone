@@ -2,9 +2,7 @@
 import axios from 'axios';
 
 // Base URL - use relative path for development (Vite proxy), full URL for production
-const API_BASE_URL = import.meta.env.PROD
-  ? 'https://backend-libraone.vercel.app/api'
-  : '/api';
+const API_BASE_URL = '/api';
 
 // Cloudinary Configuration
 const CLOUDINARY_CLOUD_NAME = 'dknbzegfq';
